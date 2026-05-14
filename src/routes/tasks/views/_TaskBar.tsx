@@ -17,6 +17,9 @@ const STATUS_BAR_CLASS: Record<TaskStatus, string> = {
   archived: "bg-ink-200 text-ink-500",
 };
 
+/** 单条色带 lane 步长：h-4 (16px) + 2px gap */
+const BAR_ROW_STEP_PX = 18;
+
 interface TaskBarProps {
   segment: BarSegment;
   task: Task;
@@ -36,7 +39,11 @@ export function TaskBar({ segment, task, onClick }: TaskBarProps) {
       }}
       title={task.title}
       style={{
+        // 强制所有 bar 同处 grid 第 1 行，列冲突时不自动换行；
+        // 用 marginTop 手动把 lane 1 推下一个步长，保证跨周续接 row 一致。
+        gridRow: 1,
         gridColumn: `${segment.startCol + 1} / span ${segment.endCol - segment.startCol + 1}`,
+        marginTop: segment.row * BAR_ROW_STEP_PX,
       }}
       className={cn(
         "h-4 px-2 text-left text-[11px] leading-4 truncate transition-all",

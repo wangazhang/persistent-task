@@ -42,9 +42,6 @@ import {
 import { TaskBar } from "./_TaskBar";
 import { useWeekBars } from "./_monthBars";
 
-/** 单条色带 lane 步长：h-4 (16px) + 2px gap */
-const BAR_ROW_STEP_PX = 18;
-
 /**
  * Month View：
  *   上 = 6×7 月历网格（DayCell 都是 droppable）
@@ -190,19 +187,12 @@ export function MonthView({
                   const task = taskById.get(seg.taskId);
                   if (!task) return null;
                   return (
-                    <div
+                    <TaskBar
                       key={`${seg.taskId}-${seg.startCol}`}
-                      style={{
-                        gridColumn: `${seg.startCol + 1} / span ${seg.endCol - seg.startCol + 1}`,
-                        marginTop: seg.row * BAR_ROW_STEP_PX,
-                      }}
-                    >
-                      <TaskBar
-                        segment={seg}
-                        task={task}
-                        onClick={() => onDateChange(task.scheduledDates[0])}
-                      />
-                    </div>
+                      segment={seg}
+                      task={task}
+                      onClick={() => onDateChange(task.scheduledDates[0])}
+                    />
                   );
                 })}
                 {bars.overflowCount > 0 && (
