@@ -192,6 +192,7 @@ export function MonthView({
                       segment={seg}
                       task={task}
                       onClick={() => onDateChange(task.scheduledDates[0])}
+                      onEdit={onEdit}
                     />
                   );
                 })}

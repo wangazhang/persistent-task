@@ -25,9 +25,11 @@ interface TaskBarProps {
   task: Task;
   /** 点击色带：通常切换 DaySection 到 task 起始日 */
   onClick: () => void;
+  /** 双击色带：打开编辑器 */
+  onEdit?: (task: Task) => void;
 }
 
-export function TaskBar({ segment, task, onClick }: TaskBarProps) {
+export function TaskBar({ segment, task, onClick, onEdit }: TaskBarProps) {
   const colorClass = STATUS_BAR_CLASS[task.status] ?? STATUS_BAR_CLASS.todo;
   return (
     <button
@@ -36,6 +38,10 @@ export function TaskBar({ segment, task, onClick }: TaskBarProps) {
       onClick={(e) => {
         e.stopPropagation(); // 不触发下方 DayCell 的点击
         onClick();
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onEdit?.(task);
       }}
       title={task.title}
       style={{

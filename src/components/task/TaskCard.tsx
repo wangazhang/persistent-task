@@ -116,6 +116,13 @@ export function TaskCard({
         e.preventDefault();
         setMenu({ x: e.clientX, y: e.clientY });
       }}
+      onDoubleClick={(e) => {
+        if (!onEdit) return;
+        // 双击交互控件（checkbox / picker / 行尾按钮）不应触发编辑
+        const t = e.target as Element | null;
+        if (t?.closest("button, input, select, textarea, [role='button']")) return;
+        onEdit(task);
+      }}
       className={cn(
         "group flex items-start gap-2 rounded-xl border bg-white p-3 transition-shadow",
         isDragging
