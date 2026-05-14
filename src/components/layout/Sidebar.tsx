@@ -9,6 +9,7 @@ import {
 import { getAdapter } from "@/lib/dataAdapter";
 import { confirm as dialogConfirm } from "@/store/dialogStore";
 import { cn } from "@/lib/utils";
+import logoUrl from "@/assets/logo.png";
 
 const NAV_ITEMS = [
   // 任务管理统一入口；默认带 view=today 让侧边栏点击行为可预期
@@ -42,9 +43,11 @@ export function Sidebar() {
   return (
     <aside className="flex h-full w-56 shrink-0 flex-col border-r border-ink-200/70 bg-white">
       <div className="flex items-center gap-2 px-5 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-soft">
-          <span className="text-base font-bold">持</span>
-        </div>
+        <img
+          src={logoUrl}
+          alt="持续任务"
+          className="h-8 w-8 rounded-lg shadow-soft"
+        />
         <div>
           <div className="text-sm font-semibold text-ink-800">持续任务</div>
           <div className="text-[11px] text-ink-400">Persistent Task</div>
