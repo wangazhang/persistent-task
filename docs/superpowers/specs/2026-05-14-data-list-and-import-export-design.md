@@ -45,11 +45,11 @@ src/lib/
 - `src/App.tsx`：注册 `/data` 路由。
 - `src/components/layout/Sidebar.tsx`：新增导航项。
 - `src/lib/webDb/sqliteDb.ts`：导出 `exportSqliteBytes()` / `replaceSqliteBytes()`。
-- `src/store/pomodoroStore.ts`：新增 `sessions: PomodoroSession[]` 字段及 `hydrate()`（当前 store 仅含运行态）。
+- 不改 store：`pomodoros` 列表已经存在于 `taskStore.pomodoros`，由 `taskStore.hydrate()` 加载，番茄表直接 `useTaskStore(s => s.pomodoros)` 即可。
 
 ### 数据流
 
-- 读：`DataPage` 通过 `useTaskStore`、`useTagStore`、`usePomodoroStore` 拿到三类列表，不引入新的 adapter 接口。
+- 读：`DataPage` 通过 `useTaskStore`（提供 `tasks` 和 `pomodoros`）和 `useTagStore` 拿到三类列表，不引入新的 adapter 接口、不改任何 store。
 - 导出：`sqliteDb.export()` → `Uint8Array` → Blob → 下载。
 - 导入：File → ArrayBuffer → 校验 → 替换 IndexedDB 中库 blob → `location.reload()` 让所有 store 重新 hydrate。
 
