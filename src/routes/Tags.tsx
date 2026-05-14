@@ -24,6 +24,10 @@ import { Modal } from "@/components/ui/Modal";
 import type { Tag, TagNode } from "@/lib/types";
 import { useTagStore } from "@/store/tagStore";
 import { useTaskStore } from "@/store/taskStore";
+import {
+  alert as dialogAlert,
+  confirm as dialogConfirm,
+} from "@/store/dialogStore";
 import { cn } from "@/lib/utils";
 
 const PRESET_COLORS = [
@@ -106,9 +110,9 @@ export function TagsPage() {
     setColor(tag.color);
   }
 
-  function save() {
+  async function save() {
     if (!name.trim()) {
-      alert("名称不能为空");
+      await dialogAlert({ title: "无法保存", message: "标签名称不能为空。" });
       return;
     }
     if (editor.editing) {
@@ -123,13 +127,14 @@ export function TagsPage() {
     setEditor({ open: false, editing: null, parentId: null });
   }
 
-  function deleteTag(tag: Tag) {
-    if (
-      !confirm(
-        `删除标签「${tag.name}」及其所有子标签吗？关联此标签的任务会自动解除该标签。`
-      )
-    )
-      return;
+  async function deleteTag(tag: Tag) {
+    const ok = await dialogConfirm({
+      title: "删除标签",
+      message: `删除标签「${tag.name}」及其所有子标签吗？\n关联此标签的任务会自动解除该标签。`,
+      confirmText: "删除",
+      danger: true,
+    });
+    if (!ok) return;
     const removed = deleteTagCascade(tag.id);
     const removedSet = new Set(removed);
     for (const t of tasks) {

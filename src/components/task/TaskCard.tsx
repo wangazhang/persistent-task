@@ -1,4 +1,7 @@
+import { useState } from "react";
+import { addDays } from "date-fns";
 import {
+  CalendarPlus,
   ExternalLink,
   GripVertical,
   PauseCircle,
@@ -9,10 +12,12 @@ import {
 import type { Task, TaskPriority } from "@/lib/types";
 import { useTagStore } from "@/store/tagStore";
 import { useTaskStore } from "@/store/taskStore";
-import { cn } from "@/lib/utils";
+import { confirm as dialogConfirm } from "@/store/dialogStore";
+import { cn, isoDate } from "@/lib/utils";
 import { TagChip } from "@/components/ui/TagChip";
 import { StatusPicker } from "@/components/ui/StatusPicker";
 import { PriorityPicker } from "@/components/ui/PriorityPicker";
+import { ContextMenu, type ContextMenuItem } from "@/components/ui/ContextMenu";
 
 interface TaskCardProps {
   task: Task;
@@ -36,10 +41,66 @@ export function TaskCard({
   const toggleStatus = useTaskStore((s) => s.toggleStatus);
   const updateTask = useTaskStore((s) => s.updateTask);
   const deleteTask = useTaskStore((s) => s.deleteTask);
+  const scheduleForDate = useTaskStore((s) => s.scheduleForDate);
 
   const isDone = task.status === "done";
   const isSuspended = task.status === "suspended";
   const priority: TaskPriority = task.priority ?? "p2";
+
+  // 右键菜单状态：null = 关闭；{x, y} = 在该坐标打开
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+
+  async function confirmDelete() {
+    const ok = await dialogConfirm({
+      title: "删除任务",
+      message: `确定删除任务「${task.title}」？此操作不可撤销。`,
+      confirmText: "删除",
+      danger: true,
+    });
+    if (ok) deleteTask(task.id);
+  }
+
+  /** 构造右键菜单项 */
+  function buildMenuItems(): ContextMenuItem[] {
+    const today = isoDate();
+    const tomorrow = isoDate(addDays(new Date(), 1));
+    const inToday = task.scheduledDates.includes(today);
+    const inTomorrow = task.scheduledDates.includes(tomorrow);
+    const items: ContextMenuItem[] = [];
+    if (onEdit) {
+      items.push({
+        label: "编辑",
+        icon: Pencil,
+        onClick: () => onEdit(task),
+      });
+    }
+    if (onStartPomodoro && !isDone && !isSuspended) {
+      items.push({
+        label: "启动番茄钟",
+        icon: Timer,
+        onClick: () => onStartPomodoro(task),
+      });
+    }
+    items.push({
+      label: inToday ? "已在今天" : "复制到今天",
+      icon: CalendarPlus,
+      disabled: inToday,
+      onClick: () => scheduleForDate(task.id, today),
+    });
+    items.push({
+      label: inTomorrow ? "已在明天" : "复制到明天",
+      icon: CalendarPlus,
+      disabled: inTomorrow,
+      onClick: () => scheduleForDate(task.id, tomorrow),
+    });
+    items.push({
+      label: "删除任务",
+      icon: Trash2,
+      danger: true,
+      onClick: () => void confirmDelete(),
+    });
+    return items;
+  }
 
   // 优先级在卡片左侧加细色条，让"哪些是高优先级"一眼看清
   const priorityBar =
@@ -51,6 +112,10 @@ export function TaskCard({
 
   return (
     <div
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
       className={cn(
         "group flex items-start gap-2 rounded-xl border bg-white p-3 transition-shadow",
         isDragging
@@ -159,10 +224,7 @@ export function TaskCard({
             <button
               type="button"
               title="删除任务"
-              onClick={() => {
-                if (confirm(`确定删除任务「${task.title}」？`))
-                  deleteTask(task.id);
-              }}
+              onClick={() => void confirmDelete()}
               className="rounded p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -202,6 +264,14 @@ export function TaskCard({
           )}
         </div>
       </div>
+
+      <ContextMenu
+        open={menu !== null}
+        x={menu?.x ?? 0}
+        y={menu?.y ?? 0}
+        items={menu ? buildMenuItems() : []}
+        onClose={() => setMenu(null)}
+      />
     </div>
   );
 }

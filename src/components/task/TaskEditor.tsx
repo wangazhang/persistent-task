@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Task, TaskPriority, TaskStatus } from "@/lib/types";
 import { useTagStore } from "@/store/tagStore";
 import { useTaskStore } from "@/store/taskStore";
+import { alert as dialogAlert } from "@/store/dialogStore";
 import { isoDate } from "@/lib/utils";
 import { Modal } from "@/components/ui/Modal";
 import { PriorityPicker } from "@/components/ui/PriorityPicker";
@@ -72,9 +73,9 @@ export function TaskEditor({
     setScheduledDates((prev) => prev.filter((x) => x !== d));
   }
 
-  function save() {
+  async function save() {
     if (!title.trim()) {
-      alert("标题不能为空");
+      await dialogAlert({ title: "无法保存", message: "任务标题不能为空。" });
       return;
     }
     const payload: Partial<Task> = {

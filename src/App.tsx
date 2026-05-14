@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { TasksHub } from "@/routes/tasks/TasksHub";
 import { TagsPage } from "@/routes/Tags";
 import { Pomodoro } from "@/routes/Pomodoro";
@@ -27,27 +28,33 @@ export default function App() {
   }, [tickPomodoro]);
 
   return (
-    <Routes>
-      <Route element={<AppLayout />}>
-        {/* 首页 → 任务管理（今日 view） */}
-        <Route index element={<Navigate to="/tasks?view=today" replace />} />
+    <>
+      <Routes>
+        <Route element={<AppLayout />}>
+          {/* 首页 → 任务管理（今日 view） */}
+          <Route index element={<Navigate to="/tasks?view=today" replace />} />
 
-        {/* 旧路径兼容：/today、/calendar 全部并入 /tasks */}
-        <Route
-          path="today"
-          element={<Navigate to="/tasks?view=today" replace />}
-        />
-        <Route
-          path="calendar"
-          element={<Navigate to="/tasks?view=month" replace />}
-        />
+          {/* 旧路径兼容：/today、/calendar 全部并入 /tasks */}
+          <Route
+            path="today"
+            element={<Navigate to="/tasks?view=today" replace />}
+          />
+          <Route
+            path="calendar"
+            element={<Navigate to="/tasks?view=month" replace />}
+          />
 
-        <Route path="tasks" element={<TasksHub />} />
-        <Route path="tags" element={<TagsPage />} />
-        <Route path="pomodoro" element={<Pomodoro />} />
-        <Route path="stats" element={<Stats />} />
-        <Route path="*" element={<Navigate to="/tasks?view=today" replace />} />
-      </Route>
-    </Routes>
+          <Route path="tasks" element={<TasksHub />} />
+          <Route path="tags" element={<TagsPage />} />
+          <Route path="pomodoro" element={<Pomodoro />} />
+          <Route path="stats" element={<Stats />} />
+          <Route
+            path="*"
+            element={<Navigate to="/tasks?view=today" replace />}
+          />
+        </Route>
+      </Routes>
+      <ConfirmDialog />
+    </>
   );
 }

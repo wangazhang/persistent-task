@@ -2,11 +2,12 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   BarChart3,
   ListTodo,
-  RotateCcw,
   Tags,
   Timer,
+  Trash2,
 } from "lucide-react";
-import { getAdapter, isTauri } from "@/lib/dataAdapter";
+import { getAdapter } from "@/lib/dataAdapter";
+import { confirm as dialogConfirm } from "@/store/dialogStore";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -17,22 +18,24 @@ const NAV_ITEMS = [
   { to: "/stats", path: "/stats", label: "统计面板", icon: BarChart3 },
 ];
 
-async function resetDemoData() {
-  const tip = isTauri()
-    ? "将清空本地 SQLite 中的全部数据并按今天日期重新生成 demo。继续？"
-    : "将清除浏览器中保存的全部演示数据并按今天日期重新生成。继续？";
-  if (!confirm(tip)) return;
+async function clearAllData() {
+  const ok = await dialogConfirm({
+    title: "清空所有数据",
+    message:
+      "将清空本地数据库中的全部任务、标签、番茄记录。\n此操作不可撤销，确认继续？",
+    confirmText: "清空",
+    danger: true,
+  });
+  if (!ok) return;
   try {
     await getAdapter().clearAll();
   } catch (e) {
-    console.error("[reset demo] clearAll failed:", e);
+    console.error("[clearAll] failed:", e);
   }
   location.reload();
 }
 
 export function Sidebar() {
-  // 重置按钮对 web / 桌面端都开放：底层 clearAll 已自适应
-  const showReset = true;
   // 高亮逻辑要基于 pathname 而非完整 to（NavLink 默认会把 ?query 一起比较，
   // 导致带 view=calendar 的 URL 不再高亮"任务"项）
   const location = useLocation();
@@ -73,21 +76,19 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-ink-200/70 px-3 py-3 text-[11px] leading-relaxed text-ink-400">
-        {showReset && (
-          <button
-            type="button"
-            onClick={resetDemoData}
-            className="mb-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-700"
-            title="清除浏览器中保存的演示数据，重新生成"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            重置 demo 数据
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={clearAllData}
+          className="mb-2 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-ink-500 hover:bg-red-50 hover:text-red-600"
+          title="清空本地数据库中的全部任务、标签、番茄记录"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          清空数据
+        </button>
         <div className="px-2">
           本地数据 · 番茄专注
           <br />
-          v0.1 · demo 数据
+          v0.1
         </div>
       </div>
     </aside>
