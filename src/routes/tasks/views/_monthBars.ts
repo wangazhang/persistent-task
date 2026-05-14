@@ -24,6 +24,7 @@ export interface BarSegment {
   endCol: number;      // 0..6（含）
   isRunStart: boolean; // 该段对应连续 run 的开端（左圆角 + 显示标题）
   isRunEnd: boolean;   // 该段对应连续 run 的结尾（右圆角）
+  row: number;         // lane index（0 或 1）：跨周 task 的所有 segment 共享同一 lane
 }
 
 export interface WeekBars {
@@ -33,6 +34,7 @@ export interface WeekBars {
 }
 
 const MAX_BARS_PER_WEEK = 2;
+const MAX_LANES = MAX_BARS_PER_WEEK;
 
 export function buildWeekBars(
   days: Date[],
@@ -104,6 +106,7 @@ export function buildWeekBars(
           endCol: segEndCol,
           isRunStart: cursorRow === runStart.weekRow && cursorCol === runStart.col,
           isRunEnd: isLastRow,
+          row: -1, // 在 lane 分配阶段填充
         });
         cursorRow += 1;
         cursorCol = 0;
@@ -113,22 +116,49 @@ export function buildWeekBars(
     if (segments.length > 0) perTask.push({ task: t, segments });
   }
 
-  for (let row = 0; row < 6; row++) {
-    const tasksThisWeek = perTask
-      .filter((x) => x.segments.some((s) => s.weekRow === row))
-      .map((x) => x.task)
-      .sort(taskSorter);
+  // ---- lane 分配阶段 ----
+  // 目标：跨周 task 的所有 segment 锁定在同一 lane（行号），保证视觉上色带在
+  // 不同周之间不会上下错位。算法：按 "task 首段 weekRow 升序 + taskSorter" 排序，
+  // 给每个 task 分配它出现的所有 weekRow 都空闲的最低 lane。
+  const orderedTasks = [...perTask].sort((a, b) => {
+    const ra = a.segments[0].weekRow;
+    const rb = b.segments[0].weekRow;
+    if (ra !== rb) return ra - rb;
+    return taskSorter(a.task, b.task);
+  });
 
-    const kept = tasksThisWeek.slice(0, MAX_BARS_PER_WEEK);
-    weeks[row].overflowCount = Math.max(0, tasksThisWeek.length - MAX_BARS_PER_WEEK);
-    const keptIds = new Set(kept.map((t) => t.id));
-    weeks[row].coveredTaskIds = new Set(keptIds);
+  // laneOccupied[weekRow][lane] = true 表示该 weekRow 的该 lane 已被占用
+  const laneOccupied: boolean[][] = Array.from(
+    { length: 6 },
+    () => Array(MAX_LANES).fill(false)
+  );
 
-    for (const x of perTask) {
-      if (!keptIds.has(x.task.id)) continue;
-      for (const seg of x.segments) {
-        if (seg.weekRow === row) weeks[row].segments.push(seg);
+  for (const x of orderedTasks) {
+    const weekRowsTouched = Array.from(
+      new Set(x.segments.map((s) => s.weekRow))
+    );
+
+    // 找最低可用 lane：必须在所有 weekRowsTouched 上都空闲
+    let assigned = -1;
+    for (let lane = 0; lane < MAX_LANES; lane++) {
+      if (weekRowsTouched.every((wr) => !laneOccupied[wr][lane])) {
+        assigned = lane;
+        break;
       }
+    }
+
+    if (assigned === -1) {
+      // 找不到 lane：丢弃整个 task，每个 weekRow overflow + 1
+      for (const wr of weekRowsTouched) weeks[wr].overflowCount += 1;
+      continue;
+    }
+
+    // 占座 + 落 segment
+    for (const wr of weekRowsTouched) laneOccupied[wr][assigned] = true;
+    for (const seg of x.segments) {
+      seg.row = assigned;
+      weeks[seg.weekRow].segments.push(seg);
+      weeks[seg.weekRow].coveredTaskIds.add(x.task.id);
     }
   }
 

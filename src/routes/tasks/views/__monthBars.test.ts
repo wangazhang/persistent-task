@@ -132,4 +132,38 @@ console.log("== 测试 7：跨周 task 的所有 segment 都被保留 ==");
   assert(t1Segs.length === 2, "跨周高优先级 task 的两段都应保留");
 }
 
+console.log("== 测试 8：跨周 task 的 row 在所有周保持一致 ==");
+{
+  const t = makeTask({
+    id: "cross",
+    scheduledDates: ["2026-05-09", "2026-05-10", "2026-05-11", "2026-05-12"],
+  });
+  const result = buildWeekBars(days, [t], null);
+  const segs = result.flatMap((w) => w.segments).filter((s) => s.taskId === "cross");
+  assert(segs.length === 2, "应有 2 段");
+  assert(segs[0].row === segs[1].row, "跨周 task 两段 row 一致");
+  assert(segs[0].row === 0, "首个出现的 task 应占 lane 0");
+}
+
+console.log("== 测试 9：跨周 task 占 lane 0 后，单周 task 应自动到 lane 1 ==");
+{
+  // tCross：周日-周一跨周
+  const tCross = makeTask({
+    id: "cross",
+    priority: "p0", // 排序在前
+    scheduledDates: ["2026-05-10", "2026-05-11"],
+  });
+  // tSingle：仅 week 0 周三-周四
+  const tSingle = makeTask({
+    id: "single",
+    priority: "p2",
+    scheduledDates: ["2026-05-06", "2026-05-07"],
+  });
+  const result = buildWeekBars(days, [tCross, tSingle], null);
+  const crossSegs = result.flatMap((w) => w.segments).filter((s) => s.taskId === "cross");
+  const singleSegs = result.flatMap((w) => w.segments).filter((s) => s.taskId === "single");
+  assert(crossSegs.every((s) => s.row === 0), "跨周 task 都在 lane 0");
+  assert(singleSegs.every((s) => s.row === 1), "同 week 0 的单段 task 退到 lane 1");
+}
+
 console.log("\n所有断言通过 ✅");

@@ -42,6 +42,9 @@ import {
 import { TaskBar } from "./_TaskBar";
 import { useWeekBars } from "./_monthBars";
 
+/** 单条色带 lane 步长：h-4 (16px) + 2px gap */
+const BAR_ROW_STEP_PX = 18;
+
 /**
  * Month View：
  *   上 = 6×7 月历网格（DayCell 都是 droppable）
@@ -94,6 +97,12 @@ export function MonthView({
   }, [cursor]);
 
   const weekBars = useWeekBars(days, tasks, tagFilter);
+
+  // O(1) task lookup for bar rendering
+  const taskById = useMemo(
+    () => new Map(tasks.map((t) => [t.id, t])),
+    [tasks]
+  );
 
   const maxInMonth = useMemo(() => {
     let max = 0;
@@ -169,21 +178,23 @@ export function MonthView({
         {Array.from({ length: 6 }, (_, weekRow) => {
           const weekDays = days.slice(weekRow * 7, weekRow * 7 + 7);
           const bars = weekBars[weekRow];
-          const uniqueTaskIds = uniqueTaskIdsInOrder(bars.segments);
           return (
             <div key={weekRow} className="flex flex-col gap-1">
-              {/* bar-layer: 与下方 cell 行共用 7 列 grid，确保色带列宽对齐 */}
-              <div className="relative grid grid-cols-7 gap-1.5">
+              {/*
+                bar-layer：与下方 cell 行共用 7 列 grid 保证列宽对齐。
+                min-h-[34px] 保证恒定行高（= 2 条色带 16px + 间隙 2px），
+                无论本周有 0/1/2 条色带，月历周高都不跳动。
+              */}
+              <div className="relative grid grid-cols-7 gap-1.5 min-h-[34px]">
                 {bars.segments.map((seg) => {
-                  const task = tasks.find((t) => t.id === seg.taskId);
+                  const task = taskById.get(seg.taskId);
                   if (!task) return null;
-                  const taskOrder = uniqueTaskIds.indexOf(seg.taskId);
                   return (
                     <div
                       key={`${seg.taskId}-${seg.startCol}`}
                       style={{
                         gridColumn: `${seg.startCol + 1} / span ${seg.endCol - seg.startCol + 1}`,
-                        marginTop: taskOrder * 18, // 16px h-4 + 2px gap
+                        marginTop: seg.row * BAR_ROW_STEP_PX,
                       }}
                     >
                       <TaskBar
@@ -198,11 +209,6 @@ export function MonthView({
                   <span className="absolute right-1 -bottom-3 text-[10px] text-ink-400">
                     +{bars.overflowCount} 跨天
                   </span>
-                )}
-                {/* 高度补齐：无色带或仅 1 条时也撑出至 16px，避免周行高跳动 */}
-                {bars.segments.length === 0 && <div className="col-span-7 h-4" />}
-                {bars.segments.length > 0 && uniqueTaskIds.length < 2 && (
-                  <div className="col-span-7 h-4" style={{ marginTop: 2 }} />
                 )}
               </div>
               {/* DayCell row：7 列 */}
@@ -265,19 +271,6 @@ export function MonthView({
       </DragOverlay>
     </DndContext>
   );
-}
-
-/** 按 segments 出现顺序返回去重的 taskId 列表，用于把同周不同 task 的色带分两行 */
-function uniqueTaskIdsInOrder(segments: { taskId: string }[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const s of segments) {
-    if (!seen.has(s.taskId)) {
-      seen.add(s.taskId);
-      out.push(s.taskId);
-    }
-  }
-  return out;
 }
 
 function HeaderBar({
