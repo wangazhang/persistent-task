@@ -6,6 +6,7 @@ import type { Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useDataUrlState, type DataTab } from "./useDataUrlState";
 import { TasksTable } from "./tables/TasksTable";
+import { ImportExportBar } from "./ImportExportBar";
 
 interface TabDef {
   key: DataTab;
@@ -31,7 +32,7 @@ export function DataPage() {
     <div className="mx-auto max-w-5xl px-8 py-8">
       <header className="mb-4 flex items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold text-ink-800">数据</h1>
-        <div className="flex items-center gap-2" />
+        <ImportExportBar />
       </header>
 
       <div className="mb-4 inline-flex overflow-hidden rounded-lg border border-ink-200">
