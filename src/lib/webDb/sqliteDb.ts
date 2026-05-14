@@ -13,7 +13,11 @@
  *   语义与 Tauri 桌面端的 SQLite 文件完全对齐，无需额外的事务/写日志层。
  */
 
-import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
+// 显式指向 sql-wasm.js（而非通过包名走 conditional exports 选 sql-wasm-browser.js）。
+// 这两份文件内容一致，但 vite dev 模式下 browser 入口的 default 导出会丢失，
+// 选 sql-wasm.js 路径可以让 dev/build 行为一致。
+import initSqlJs from "sql.js/dist/sql-wasm.js";
+import type { Database, SqlJsStatic } from "sql.js";
 import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
 import { debounce } from "../utils";
 import { SCHEMA_SQL } from "./schema";
