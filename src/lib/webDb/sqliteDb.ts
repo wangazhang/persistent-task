@@ -92,7 +92,29 @@ export async function initWebDb(): Promise<Database> {
   db = bytes ? new SQL.Database(bytes) : new SQL.Database();
   // 每次启动都执行一次 schema（CREATE IF NOT EXISTS 幂等）
   db.run(SCHEMA_SQL);
+  // 对老 DB 补齐后加的列（与 Rust 端 ensure_column 等价）
+  ensureColumn(db, "tasks", "color", "TEXT");
   return db;
+}
+
+/**
+ * 给已存在的表补缺失列（SQLite 不支持 ALTER TABLE ADD COLUMN IF NOT EXISTS）。
+ * 与 src-tauri/src/db.rs 的 ensure_column 函数等价。
+ */
+function ensureColumn(database: Database, table: string, column: string, decl: string): void {
+  const stmt = database.prepare(`PRAGMA table_info(${table})`);
+  const names: string[] = [];
+  try {
+    while (stmt.step()) {
+      const row = stmt.getAsObject() as { name?: string };
+      if (row.name) names.push(row.name);
+    }
+  } finally {
+    stmt.free();
+  }
+  if (!names.includes(column)) {
+    database.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+  }
 }
 
 export function getDb(): Database {

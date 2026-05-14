@@ -400,13 +400,22 @@ function DroppableDayCell({
                 <div
                   key={t.id}
                   className={cn(
-                    "truncate",
+                    "flex items-center gap-1 truncate",
                     t.status === "done"
                       ? "text-ink-300 line-through"
                       : "text-ink-600"
                   )}
                 >
-                  · {t.title}
+                  {t.color ? (
+                    <span
+                      aria-hidden
+                      style={{ backgroundColor: t.color }}
+                      className="inline-block h-2 w-2 shrink-0 rounded-full"
+                    />
+                  ) : (
+                    <span aria-hidden className="shrink-0">·</span>
+                  )}
+                  <span className="truncate">{t.title}</span>
                 </div>
               ))}
               {uncovered.length > 1 && (

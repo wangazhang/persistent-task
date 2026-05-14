@@ -46,6 +46,9 @@ pub struct Task {
     pub scheduled_dates: Vec<String>,
     pub tag_ids: Vec<String>,
     pub order: i32,
+    /// 自定义颜色（hex）。未设则前端按优先级 / 状态色显示。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub doc_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

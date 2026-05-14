@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { X as XIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -12,12 +13,24 @@ export interface ContextMenuItem {
   onClick: () => void;
 }
 
+/** 内嵌色板配置：菜单底部追加一行预设色 + 清除按钮 */
+export interface ContextMenuColorPicker {
+  /** 当前色（hex 或 undefined）。匹配的预设色会高亮 ring */
+  current?: string;
+  /** 9 个预设色（来自 src/lib/colors.ts） */
+  presets: string[];
+  /** 点击预设色 → onChange(hex)；点击清除按钮 → onChange(undefined) */
+  onChange: (color: string | undefined) => void;
+}
+
 interface ContextMenuProps {
   open: boolean;
   /** 触发点的 viewport 坐标（通常来自 onContextMenu 的 e.clientX/Y） */
   x: number;
   y: number;
   items: ContextMenuItem[];
+  /** 可选：菜单底部追加一行内嵌色板（用于"改颜色"） */
+  colorPicker?: ContextMenuColorPicker;
   onClose: () => void;
 }
 
@@ -27,7 +40,7 @@ interface ContextMenuProps {
  * 通过 portal 渲染到 body，避免被父容器的 overflow 截断。
  * 边界处理：默认从 (x, y) 向右下展开；超出 viewport 时反向贴边。
  */
-export function ContextMenu({ open, x, y, items, onClose }: ContextMenuProps) {
+export function ContextMenu({ open, x, y, items, colorPicker, onClose }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [adjusted, setAdjusted] = useState({ x, y });
 
@@ -107,6 +120,44 @@ export function ContextMenu({ open, x, y, items, onClose }: ContextMenuProps) {
           </button>
         );
       })}
+      {colorPicker && (
+        <div className="mt-1 border-t border-ink-100 px-3 pb-1.5 pt-2">
+          <div className="mb-1 text-[10px] text-ink-400">颜色</div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                colorPicker.onChange(undefined);
+              }}
+              title="清除颜色（恢复默认）"
+              className={cn(
+                "flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-ink-300 text-ink-400 hover:border-ink-500 hover:text-ink-600",
+                !colorPicker.current && "ring-2 ring-ink-700 ring-offset-1"
+              )}
+            >
+              <XIcon className="h-2.5 w-2.5" />
+            </button>
+            {colorPicker.presets.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => {
+                  onClose();
+                  colorPicker.onChange(c);
+                }}
+                title={c}
+                style={{ backgroundColor: c }}
+                className={cn(
+                  "h-5 w-5 rounded-full transition-all hover:scale-110",
+                  colorPicker.current === c &&
+                    "ring-2 ring-ink-700 ring-offset-1"
+                )}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   );

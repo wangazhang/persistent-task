@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     "order"      INTEGER NOT NULL DEFAULT 0,
     doc_url      TEXT,
     doc_title    TEXT,
+    color        TEXT,
     completed_at TEXT,
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL

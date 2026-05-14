@@ -58,7 +58,7 @@ export class SqliteAdapter implements DataAdapter {
   async listTasks(): Promise<Task[]> {
     const taskRows = query<Row>(
       `SELECT id, title, description, status, priority, "order",
-              doc_url, doc_title, completed_at, created_at, updated_at
+              doc_url, doc_title, color, completed_at, created_at, updated_at
        FROM tasks`
     );
     const tasks: Task[] = taskRows.map((r) => ({
@@ -70,6 +70,7 @@ export class SqliteAdapter implements DataAdapter {
       scheduledDates: [],
       tagIds: [],
       order: n(r.order),
+      color: (r.color as string | null) ?? undefined,
       docUrl: (r.doc_url as string | null) ?? undefined,
       docTitle: (r.doc_title as string | null) ?? undefined,
       completedAt: (r.completed_at as string | null) ?? undefined,
@@ -109,8 +110,8 @@ export class SqliteAdapter implements DataAdapter {
       run(
         `INSERT INTO tasks (
             id, title, description, status, priority, "order",
-            doc_url, doc_title, completed_at, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            doc_url, doc_title, color, completed_at, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
             description = excluded.description,
@@ -119,6 +120,7 @@ export class SqliteAdapter implements DataAdapter {
             "order" = excluded."order",
             doc_url = excluded.doc_url,
             doc_title = excluded.doc_title,
+            color = excluded.color,
             completed_at = excluded.completed_at,
             updated_at = excluded.updated_at`,
         [
@@ -130,6 +132,7 @@ export class SqliteAdapter implements DataAdapter {
           task.order,
           task.docUrl ?? null,
           task.docTitle ?? null,
+          task.color ?? null,
           task.completedAt ?? null,
           task.createdAt,
           task.updatedAt,

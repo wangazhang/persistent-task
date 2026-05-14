@@ -32,7 +32,7 @@ pub fn list_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
         .prepare(
             r#"
             SELECT id, title, description, status, priority, "order",
-                   doc_url, doc_title, completed_at, created_at, updated_at
+                   doc_url, doc_title, color, completed_at, created_at, updated_at
             FROM tasks
             "#,
         )
@@ -48,16 +48,17 @@ pub fn list_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
                 row.get::<_, i32>(5)?,                     // order
                 row.get::<_, Option<String>>(6)?,          // doc_url
                 row.get::<_, Option<String>>(7)?,          // doc_title
-                row.get::<_, Option<String>>(8)?,          // completed_at
-                row.get::<_, String>(9)?,                  // created_at
-                row.get::<_, String>(10)?,                 // updated_at
+                row.get::<_, Option<String>>(8)?,          // color
+                row.get::<_, Option<String>>(9)?,          // completed_at
+                row.get::<_, String>(10)?,                 // created_at
+                row.get::<_, String>(11)?,                 // updated_at
             ))
         })
         .map_err(to_err)?;
 
     let mut tasks: Vec<Task> = Vec::new();
     for r in task_rows {
-        let (id, title, description, status, priority, order, doc_url, doc_title, completed_at, created_at, updated_at) =
+        let (id, title, description, status, priority, order, doc_url, doc_title, color, completed_at, created_at, updated_at) =
             r.map_err(to_err)?;
         tasks.push(Task {
             id,
@@ -68,6 +69,7 @@ pub fn list_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
             scheduled_dates: vec![],
             tag_ids: vec![],
             order,
+            color,
             doc_url,
             doc_title,
             completed_at,
@@ -130,8 +132,8 @@ pub fn upsert_task(state: State<AppState>, task: Task) -> Result<(), String> {
         r#"
         INSERT INTO tasks (
             id, title, description, status, priority, "order",
-            doc_url, doc_title, completed_at, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            doc_url, doc_title, color, completed_at, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
         ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
             description = excluded.description,
@@ -140,6 +142,7 @@ pub fn upsert_task(state: State<AppState>, task: Task) -> Result<(), String> {
             "order" = excluded."order",
             doc_url = excluded.doc_url,
             doc_title = excluded.doc_title,
+            color = excluded.color,
             completed_at = excluded.completed_at,
             updated_at = excluded.updated_at
         "#,
@@ -152,6 +155,7 @@ pub fn upsert_task(state: State<AppState>, task: Task) -> Result<(), String> {
             task.order,
             task.doc_url,
             task.doc_title,
+            task.color,
             task.completed_at,
             task.created_at,
             task.updated_at,

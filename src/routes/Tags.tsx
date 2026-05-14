@@ -29,18 +29,7 @@ import {
   confirm as dialogConfirm,
 } from "@/store/dialogStore";
 import { cn } from "@/lib/utils";
-
-const PRESET_COLORS = [
-  "#6366f1", // indigo
-  "#8b5cf6", // violet
-  "#ec4899", // pink
-  "#f97316", // orange
-  "#f59e0b", // amber
-  "#10b981", // emerald
-  "#06b6d4", // cyan
-  "#3b82f6", // blue
-  "#64748b", // slate
-];
+import { PRESET_COLORS } from "@/lib/colors";
 
 interface EditorState {
   open: boolean;

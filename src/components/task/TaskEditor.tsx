@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { X as XIcon } from "lucide-react";
 import type { Task, TaskPriority, TaskStatus } from "@/lib/types";
 import { useTagStore } from "@/store/tagStore";
 import { useTaskStore } from "@/store/taskStore";
 import { alert as dialogAlert } from "@/store/dialogStore";
-import { isoDate } from "@/lib/utils";
+import { cn, isoDate } from "@/lib/utils";
+import { PRESET_COLORS } from "@/lib/colors";
 import { Modal } from "@/components/ui/Modal";
 import { PriorityPicker } from "@/components/ui/PriorityPicker";
 import { TagHierarchyPicker } from "@/components/ui/TagHierarchyPicker";
@@ -36,6 +38,8 @@ export function TaskEditor({
   const [docTitle, setDocTitle] = useState("");
   const [scheduledDates, setScheduledDates] = useState<string[]>([]);
   const [newDate, setNewDate] = useState(defaultDate ?? isoDate());
+  // undefined = 未设（按优先级/状态色降级）；string = 用户选定 hex
+  const [color, setColor] = useState<string | undefined>(undefined);
 
   // 初始化 / 切换 task
   useEffect(() => {
@@ -49,6 +53,7 @@ export function TaskEditor({
       setDocUrl(task.docUrl ?? "");
       setDocTitle(task.docTitle ?? "");
       setScheduledDates(task.scheduledDates);
+      setColor(task.color);
     } else {
       setTitle("");
       setDescription("");
@@ -58,6 +63,7 @@ export function TaskEditor({
       setDocUrl("");
       setDocTitle("");
       setScheduledDates(defaultDate ? [defaultDate] : [isoDate()]);
+      setColor(undefined);
     }
     setNewDate(defaultDate ?? isoDate());
   }, [open, task, defaultDate]);
@@ -86,6 +92,7 @@ export function TaskEditor({
       tagIds,
       docUrl: docUrl.trim() || undefined,
       docTitle: docTitle.trim() || undefined,
+      color,
       // 即使 status === "done" 也保留 scheduledDates：
       // 这样取消完成或恢复时跨天信息不会丢失
       scheduledDates,
@@ -185,6 +192,41 @@ export function TaskEditor({
               P0 紧急 · P1 重要 · P2 一般（默认）
             </span>
           </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-ink-500">
+            颜色
+          </label>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setColor(undefined)}
+              className={cn(
+                "flex h-6 w-6 items-center justify-center rounded-full border-2 border-dashed border-ink-300 text-ink-400 hover:border-ink-500 hover:text-ink-600",
+                !color && "ring-2 ring-ink-700 ring-offset-2"
+              )}
+              title="不设颜色（按优先级 / 状态色显示）"
+            >
+              <XIcon className="h-3 w-3" />
+            </button>
+            {PRESET_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setColor(c)}
+                style={{ backgroundColor: c }}
+                className={cn(
+                  "h-6 w-6 rounded-full ring-offset-2 transition-all hover:scale-110",
+                  color === c ? "ring-2 ring-ink-700" : "hover:ring-1 hover:ring-ink-300"
+                )}
+                title={c}
+              />
+            ))}
+          </div>
+          <p className="mt-1 text-[11px] text-ink-400">
+            不设 = 按优先级 / 状态色显示
+          </p>
         </div>
 
         <div>

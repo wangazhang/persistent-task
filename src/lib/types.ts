@@ -52,6 +52,12 @@ export interface Task {
   tagIds: string[];
   /** 当日内的排序权重（数字越小越靠前），按 scheduledDates 中的某天排序使用 */
   order: number;
+  /**
+   * 任务自定义颜色（hex，如 #6366f1）。
+   * 设置后会接管：TaskCard 左竖条、月视图色带、DayCell 摘要前缀点。
+   * 未设（undefined）则视图按优先级 / 状态色降级，对老数据零回归。
+   */
+  color?: string;
   /** 关联外部文档（钉钉文档 / 飞书 / 任意 URL）*/
   docUrl?: string;
   docTitle?: string;

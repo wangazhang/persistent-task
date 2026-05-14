@@ -93,6 +93,8 @@ impl AppState {
 
         // 对旧版本数据库做幂等的列补齐：priority 在 0.1.0 中后加入
         ensure_column(conn, "tasks", "priority", "TEXT NOT NULL DEFAULT 'p2'")?;
+        // color 在 0.2 中加入，可空（未设则前端按优先级 / 状态色降级）
+        ensure_column(conn, "tasks", "color", "TEXT")?;
 
         Ok(())
     }

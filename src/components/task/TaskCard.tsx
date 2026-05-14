@@ -14,6 +14,7 @@ import { useTagStore } from "@/store/tagStore";
 import { useTaskStore } from "@/store/taskStore";
 import { confirm as dialogConfirm } from "@/store/dialogStore";
 import { cn, isoDate } from "@/lib/utils";
+import { PRESET_COLORS } from "@/lib/colors";
 import { TagChip } from "@/components/ui/TagChip";
 import { StatusPicker } from "@/components/ui/StatusPicker";
 import { PriorityPicker } from "@/components/ui/PriorityPicker";
@@ -102,13 +103,17 @@ export function TaskCard({
     return items;
   }
 
-  // 优先级在卡片左侧加细色条，让"哪些是高优先级"一眼看清
+  // 左侧色条优先级：
+  //   1. 挂起态（紫色细条，所有其他都让位）
+  //   2. task.color（用户自定义颜色，4px 实色）
+  //   3. priorityBar（按 P0/P1 系统语义色，P2 无）
   const priorityBar =
     priority === "p0"
       ? "border-l-4 border-l-rose-400"
       : priority === "p1"
       ? "border-l-4 border-l-amber-400"
       : ""; // p2 不加条，保持视觉轻
+  const useTaskColor = !!task.color && !isSuspended;
 
   return (
     <div
@@ -123,6 +128,7 @@ export function TaskCard({
         if (t?.closest("button, input, select, textarea, [role='button']")) return;
         onEdit(task);
       }}
+      style={useTaskColor ? { borderLeft: `4px solid ${task.color}` } : undefined}
       className={cn(
         "group flex items-start gap-2 rounded-xl border bg-white p-3 transition-shadow",
         isDragging
@@ -132,8 +138,8 @@ export function TaskCard({
         isDone && "opacity-60",
         isSuspended &&
           "border-l-2 border-l-paused-300 bg-paused-50/30 opacity-90",
-        // 优先级 P0/P1 的左竖条；挂起态优先于优先级（避免覆盖）
-        !isSuspended && priorityBar
+        // 优先级 P0/P1 的左竖条；挂起态优先于优先级；task.color 优先于 priorityBar
+        !isSuspended && !useTaskColor && priorityBar
       )}
     >
       {/* 拖拽手柄 */}
@@ -277,6 +283,15 @@ export function TaskCard({
         x={menu?.x ?? 0}
         y={menu?.y ?? 0}
         items={menu ? buildMenuItems() : []}
+        colorPicker={
+          menu
+            ? {
+                current: task.color,
+                presets: PRESET_COLORS,
+                onChange: (c) => updateTask(task.id, { color: c }),
+              }
+            : undefined
+        }
         onClose={() => setMenu(null)}
       />
     </div>

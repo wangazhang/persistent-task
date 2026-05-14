@@ -1,7 +1,8 @@
 // src/routes/tasks/views/_TaskBar.tsx
 //
 // 月视图中单条跨天任务色带。
-//   - 颜色按状态（todo 蓝 / in_progress 橙 / suspended 紫 / done 灰+删除线 / archived 浅灰）
+//   - 颜色优先级：task.color（用户自定义）→ STATUS_BAR_CLASS（系统状态色）
+//     即使覆盖了 task.color，done 状态的 line-through 仍然生效（语义独立）
 //   - 仅 isRunStart=true 时显示标题；续接段保留色块但不重复标题
 //   - 圆角条件：左圆 ⇔ isRunStart，右圆 ⇔ isRunEnd
 
@@ -42,7 +43,8 @@ interface TaskBarProps {
 }
 
 export function TaskBar({ segment, task, onClick, onEdit }: TaskBarProps) {
-  const colorClass = STATUS_BAR_CLASS[task.status] ?? STATUS_BAR_CLASS.todo;
+  const useTaskColor = !!task.color;
+  const statusClass = STATUS_BAR_CLASS[task.status] ?? STATUS_BAR_CLASS.todo;
   const span = segment.endCol - segment.startCol + 1;
   return (
     <button
@@ -65,11 +67,15 @@ export function TaskBar({ segment, task, onClick, onEdit }: TaskBarProps) {
         left: `calc(${segment.startCol} * ${COL_STEP})`,
         width: `calc(${span} * (${COL_WIDTH}) + ${span - 1} * 6px)`,
         top: BAR_TOP_OFFSET_PX + segment.row * BAR_ROW_STEP_PX,
+        ...(useTaskColor ? { backgroundColor: task.color, color: "white" } : null),
       }}
       className={cn(
         "h-4 px-2 text-left text-[11px] leading-4 truncate transition-all",
         "hover:shadow-md hover:-translate-y-px",
-        colorClass,
+        // task.color 优先；否则用状态色。done 的 line-through 始终生效（语义独立）
+        useTaskColor
+          ? task.status === "done" && "line-through"
+          : statusClass,
         segment.isRunStart ? "rounded-l-md" : "rounded-l-none",
         segment.isRunEnd ? "rounded-r-md" : "rounded-r-none"
       )}
