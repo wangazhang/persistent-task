@@ -21,7 +21,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { TaskCard } from "@/components/task/TaskCard";
 import type { Task, TaskPriority } from "@/lib/types";
@@ -340,6 +340,17 @@ function WeekRow({
   const [quickInput, setQuickInput] = useState("");
   const [quickOpen, setQuickOpen] = useState(false);
 
+  // 折叠：默认只展示前 VISIBLE_LIMIT 条 active，超出折成"还有 N 条"
+  // 让"忙日"垂直占位可控；展开后显示全部，再次点击收起
+  const VISIBLE_LIMIT = 3;
+  const [expanded, setExpanded] = useState(false);
+  const overflow = bucket.active.length > VISIBLE_LIMIT;
+  const visibleTasks =
+    expanded || !overflow
+      ? bucket.active
+      : bucket.active.slice(0, VISIBLE_LIMIT);
+  const hiddenCount = bucket.active.length - VISIBLE_LIMIT;
+
   function commitQuick() {
     const v = quickInput.trim();
     if (!v) {
@@ -414,15 +425,33 @@ function WeekRow({
         {bucket.active.length === 0 ? (
           <div className="py-1 text-[11px] text-ink-300">—— 空 ——</div>
         ) : (
-          bucket.active.map((t) => (
-            <DraggableTaskCard
-              key={t.id}
-              task={t}
-              fromDate={iso}
-              onEdit={onEdit}
-              onStartPomodoro={onStartPomodoro}
-            />
-          ))
+          <>
+            {visibleTasks.map((t) => (
+              <DraggableTaskCard
+                key={t.id}
+                task={t}
+                fromDate={iso}
+                onEdit={onEdit}
+                onStartPomodoro={onStartPomodoro}
+              />
+            ))}
+            {overflow && (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="flex h-7 w-fit items-center gap-1 rounded-md px-2 text-[11px] text-ink-500 hover:bg-ink-100 hover:text-ink-700"
+                aria-expanded={expanded}
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 transition-transform",
+                    expanded && "rotate-180"
+                  )}
+                />
+                {expanded ? "收起" : `还有 ${hiddenCount} 条`}
+              </button>
+            )}
+          </>
         )}
         {/* 行末快速添加 */}
         {quickOpen ? (
