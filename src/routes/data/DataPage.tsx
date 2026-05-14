@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useDataUrlState, type DataTab } from "./useDataUrlState";
 import { TasksTable } from "./tables/TasksTable";
 import { TagsTable } from "./tables/TagsTable";
+import { PomodorosTable } from "./tables/PomodorosTable";
 import { ImportExportBar } from "./ImportExportBar";
 
 interface TabDef {
@@ -56,11 +57,7 @@ export function DataPage() {
 
       {tab === "tasks" && <TasksTable onOpenTask={(t) => setEditing(t)} />}
       {tab === "tags" && <TagsTable />}
-      {tab === "pomodoros" && (
-        <div className="rounded-lg border border-ink-200 bg-white p-8 text-center text-sm text-ink-400">
-          番茄表格 · 待 Task 7 实现
-        </div>
-      )}
+      {tab === "pomodoros" && <PomodorosTable />}
 
       <TaskEditor
         open={!!editing}
