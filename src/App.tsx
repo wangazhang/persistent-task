@@ -6,6 +6,7 @@ import { TasksHub } from "@/routes/tasks/TasksHub";
 import { TagsPage } from "@/routes/Tags";
 import { Pomodoro } from "@/routes/Pomodoro";
 import { Stats } from "@/routes/Stats";
+import { DataPage } from "@/routes/data/DataPage";
 import { useTaskStore } from "@/store/taskStore";
 import { useTagStore } from "@/store/tagStore";
 import { usePomodoroStore } from "@/store/pomodoroStore";
@@ -48,6 +49,7 @@ export default function App() {
           <Route path="tags" element={<TagsPage />} />
           <Route path="pomodoro" element={<Pomodoro />} />
           <Route path="stats" element={<Stats />} />
+          <Route path="data" element={<DataPage />} />
           <Route
             path="*"
             element={<Navigate to="/tasks?view=today" replace />}

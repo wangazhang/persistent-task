@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   BarChart3,
+  Database,
   ListTodo,
   Tags,
   Timer,
@@ -16,6 +17,7 @@ const NAV_ITEMS = [
   { to: "/tags", path: "/tags", label: "标签管理", icon: Tags },
   { to: "/pomodoro", path: "/pomodoro", label: "番茄时钟", icon: Timer },
   { to: "/stats", path: "/stats", label: "统计面板", icon: BarChart3 },
+  { to: "/data", path: "/data", label: "数据", icon: Database },
 ];
 
 async function clearAllData() {
