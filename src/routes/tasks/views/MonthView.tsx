@@ -39,6 +39,8 @@ import {
   useTagFilterSet,
   type DayInfo,
 } from "./_helpers";
+import { TaskBar } from "./_TaskBar";
+import { useWeekBars } from "./_monthBars";
 
 /**
  * Month View：
@@ -90,6 +92,8 @@ export function MonthView({
     const end = endOfWeek(endOfMonth(cursor), { weekStartsOn: 1 });
     return eachDayOfInterval({ start, end });
   }, [cursor]);
+
+  const weekBars = useWeekBars(days, tasks, tagFilter);
 
   const maxInMonth = useMemo(() => {
     let max = 0;
@@ -161,18 +165,64 @@ export function MonthView({
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-1.5">
-        {days.map((day) => (
-          <DroppableDayCell
-            key={day.toISOString()}
-            day={day}
-            cursor={cursor}
-            selectedISO={date}
-            info={dayMap.get(format(day, "yyyy-MM-dd"))}
-            maxScale={maxInMonth}
-            onPick={onDateChange}
-          />
-        ))}
+      <div className="flex flex-col gap-1.5">
+        {Array.from({ length: 6 }, (_, weekRow) => {
+          const weekDays = days.slice(weekRow * 7, weekRow * 7 + 7);
+          const bars = weekBars[weekRow];
+          const uniqueTaskIds = uniqueTaskIdsInOrder(bars.segments);
+          return (
+            <div key={weekRow} className="flex flex-col gap-1">
+              {/* bar-layer: 与下方 cell 行共用 7 列 grid，确保色带列宽对齐 */}
+              <div className="relative grid grid-cols-7 gap-1.5">
+                {bars.segments.map((seg) => {
+                  const task = tasks.find((t) => t.id === seg.taskId);
+                  if (!task) return null;
+                  const taskOrder = uniqueTaskIds.indexOf(seg.taskId);
+                  return (
+                    <div
+                      key={`${seg.taskId}-${seg.startCol}`}
+                      style={{
+                        gridColumn: `${seg.startCol + 1} / span ${seg.endCol - seg.startCol + 1}`,
+                        marginTop: taskOrder * 18, // 16px h-4 + 2px gap
+                      }}
+                    >
+                      <TaskBar
+                        segment={seg}
+                        task={task}
+                        onClick={() => onDateChange(task.scheduledDates[0])}
+                      />
+                    </div>
+                  );
+                })}
+                {bars.overflowCount > 0 && (
+                  <span className="absolute right-1 -bottom-3 text-[10px] text-ink-400">
+                    +{bars.overflowCount} 跨天
+                  </span>
+                )}
+                {/* 高度补齐：无色带或仅 1 条时也撑出至 16px，避免周行高跳动 */}
+                {bars.segments.length === 0 && <div className="col-span-7 h-4" />}
+                {bars.segments.length > 0 && uniqueTaskIds.length < 2 && (
+                  <div className="col-span-7 h-4" style={{ marginTop: 2 }} />
+                )}
+              </div>
+              {/* DayCell row：7 列 */}
+              <div className="grid grid-cols-7 gap-1.5">
+                {weekDays.map((day) => (
+                  <DroppableDayCell
+                    key={day.toISOString()}
+                    day={day}
+                    cursor={cursor}
+                    selectedISO={date}
+                    info={dayMap.get(format(day, "yyyy-MM-dd"))}
+                    maxScale={maxInMonth}
+                    onPick={onDateChange}
+                    coveredTaskIds={bars.coveredTaskIds}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <DaySection
@@ -215,6 +265,19 @@ export function MonthView({
       </DragOverlay>
     </DndContext>
   );
+}
+
+/** 按 segments 出现顺序返回去重的 taskId 列表，用于把同周不同 task 的色带分两行 */
+function uniqueTaskIdsInOrder(segments: { taskId: string }[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of segments) {
+    if (!seen.has(s.taskId)) {
+      seen.add(s.taskId);
+      out.push(s.taskId);
+    }
+  }
+  return out;
 }
 
 function HeaderBar({
@@ -275,6 +338,7 @@ function DroppableDayCell({
   info,
   maxScale,
   onPick,
+  coveredTaskIds,
 }: {
   day: Date;
   cursor: Date;
@@ -282,6 +346,7 @@ function DroppableDayCell({
   info: DayInfo | undefined;
   maxScale: number;
   onPick: (iso: string) => void;
+  coveredTaskIds: Set<string>;
 }) {
   const iso = format(day, "yyyy-MM-dd");
   const { setNodeRef, isOver } = useDroppable({
@@ -345,28 +410,30 @@ function DroppableDayCell({
             </span>
           )}
         </div>
-        {info && (
-          <div className="mt-1 space-y-0.5 overflow-hidden text-[11px] leading-tight">
-            {info.tasks.slice(0, 2).map((t) => (
-              <div
-                key={t.id}
-                className={cn(
-                  "truncate",
-                  t.status === "done"
-                    ? "text-ink-300 line-through"
-                    : "text-ink-600"
-                )}
-              >
-                · {t.title}
-              </div>
-            ))}
-            {info.tasks.length > 2 && (
-              <div className="text-ink-400">
-                还有 {info.tasks.length - 2} 个
-              </div>
-            )}
-          </div>
-        )}
+        {info && (() => {
+          const uncovered = info.tasks.filter((t) => !coveredTaskIds.has(t.id));
+          if (uncovered.length === 0) return null;
+          return (
+            <div className="mt-1 space-y-0.5 overflow-hidden text-[11px] leading-tight">
+              {uncovered.slice(0, 1).map((t) => (
+                <div
+                  key={t.id}
+                  className={cn(
+                    "truncate",
+                    t.status === "done"
+                      ? "text-ink-300 line-through"
+                      : "text-ink-600"
+                  )}
+                >
+                  · {t.title}
+                </div>
+              ))}
+              {uncovered.length > 1 && (
+                <div className="text-ink-400">还有 {uncovered.length - 1} 个</div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
