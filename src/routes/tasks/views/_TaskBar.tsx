@@ -20,6 +20,18 @@ const STATUS_BAR_CLASS: Record<TaskStatus, string> = {
 /** 单条色带 lane 步长：h-4 (16px) + 2px gap */
 const BAR_ROW_STEP_PX = 18;
 
+/** 色带在 cell 内的起始 y（避开日期号行 + gap）*/
+const BAR_TOP_OFFSET_PX = 24;
+
+/**
+ * 列布局公式（与 MonthView 周行 grid-cols-7 gap-1.5 对齐）：
+ *   一列宽 = (容器宽度 - 6 * 6px gap) / 7 = (100% - 36px) / 7
+ *   一格步进 = 一列宽 + 6px gap
+ * 色带跨多列时 width 包含中间 gap，让相邻列在 gap 处视觉贯穿。
+ */
+const COL_WIDTH = "(100% - 36px) / 7";
+const COL_STEP = `((${COL_WIDTH}) + 6px)`;
+
 interface TaskBarProps {
   segment: BarSegment;
   task: Task;
@@ -31,6 +43,7 @@ interface TaskBarProps {
 
 export function TaskBar({ segment, task, onClick, onEdit }: TaskBarProps) {
   const colorClass = STATUS_BAR_CLASS[task.status] ?? STATUS_BAR_CLASS.todo;
+  const span = segment.endCol - segment.startCol + 1;
   return (
     <button
       type="button"
@@ -45,11 +58,13 @@ export function TaskBar({ segment, task, onClick, onEdit }: TaskBarProps) {
       }}
       title={task.title}
       style={{
-        // 强制所有 bar 同处 grid 第 1 行，列冲突时不自动换行；
-        // 用 marginTop 手动把 lane 1 推下一个步长，保证跨周续接 row 一致。
-        gridRow: 1,
-        gridColumn: `${segment.startCol + 1} / span ${segment.endCol - segment.startCol + 1}`,
-        marginTop: segment.row * BAR_ROW_STEP_PX,
+        // 绝对定位浮在 cell 之上，跨多列时 width 包含中间 gap 视觉贯穿。
+        // pointerEvents:auto 抗住父层 pointer-events:none（cell 点击穿透但色带自身可点）。
+        position: "absolute",
+        pointerEvents: "auto",
+        left: `calc(${segment.startCol} * ${COL_STEP})`,
+        width: `calc(${span} * (${COL_WIDTH}) + ${span - 1} * 6px)`,
+        top: BAR_TOP_OFFSET_PX + segment.row * BAR_ROW_STEP_PX,
       }}
       className={cn(
         "h-4 px-2 text-left text-[11px] leading-4 truncate transition-all",

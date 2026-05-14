@@ -176,13 +176,25 @@ export function MonthView({
           const weekDays = days.slice(weekRow * 7, weekRow * 7 + 7);
           const bars = weekBars[weekRow];
           return (
-            <div key={weekRow} className="flex flex-col gap-1">
-              {/*
-                bar-layer：与下方 cell 行共用 7 列 grid 保证列宽对齐。
-                min-h-[34px] 保证恒定行高（= 2 条色带 16px + 间隙 2px），
-                无论本周有 0/1/2 条色带，月历周高都不跳动。
-              */}
-              <div className="relative grid grid-cols-7 gap-1.5 min-h-[34px]">
+            /*
+              周行容器：relative 让色带 absolute 子层与 7 列 cell 重叠。
+              DayCell 内部留出 BAR_TOP_OFFSET_PX 给色带区，摘要文字下移 mt-9。
+              色带容器 pointer-events-none 让 cell 点击穿透，色带 button 自身 auto。
+            */
+            <div key={weekRow} className="relative grid grid-cols-7 gap-1.5">
+              {weekDays.map((day) => (
+                <DroppableDayCell
+                  key={day.toISOString()}
+                  day={day}
+                  cursor={cursor}
+                  selectedISO={date}
+                  info={dayMap.get(format(day, "yyyy-MM-dd"))}
+                  maxScale={maxInMonth}
+                  onPick={onDateChange}
+                  coveredTaskIds={bars.coveredTaskIds}
+                />
+              ))}
+              <div className="pointer-events-none absolute inset-0">
                 {bars.segments.map((seg) => {
                   const task = taskById.get(seg.taskId);
                   if (!task) return null;
@@ -197,25 +209,10 @@ export function MonthView({
                   );
                 })}
                 {bars.overflowCount > 0 && (
-                  <span className="absolute right-1 -bottom-3 text-[10px] text-ink-400">
+                  <span className="absolute bottom-1 right-2 text-[10px] text-ink-400">
                     +{bars.overflowCount} 跨天
                   </span>
                 )}
-              </div>
-              {/* DayCell row：7 列 */}
-              <div className="grid grid-cols-7 gap-1.5">
-                {weekDays.map((day) => (
-                  <DroppableDayCell
-                    key={day.toISOString()}
-                    day={day}
-                    cursor={cursor}
-                    selectedISO={date}
-                    info={dayMap.get(format(day, "yyyy-MM-dd"))}
-                    maxScale={maxInMonth}
-                    onPick={onDateChange}
-                    coveredTaskIds={bars.coveredTaskIds}
-                  />
-                ))}
               </div>
             </div>
           );
@@ -398,7 +395,7 @@ function DroppableDayCell({
           const uncovered = info.tasks.filter((t) => !coveredTaskIds.has(t.id));
           if (uncovered.length === 0) return null;
           return (
-            <div className="mt-1 space-y-0.5 overflow-hidden text-[11px] leading-tight">
+            <div className="mt-9 space-y-0.5 overflow-hidden text-[11px] leading-tight">
               {uncovered.slice(0, 1).map((t) => (
                 <div
                   key={t.id}
