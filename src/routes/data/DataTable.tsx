@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -94,6 +94,9 @@ export function DataTable<T>(props: DataTableProps<T>) {
 
   const total = sorted.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
   const clampedPage = Math.min(page, pageCount);
   const pageRows = sorted.slice(
     (clampedPage - 1) * PAGE_SIZE,
