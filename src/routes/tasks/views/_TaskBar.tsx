@@ -39,7 +39,7 @@ export function TaskBar({ segment, task, onClick }: TaskBarProps) {
         gridColumn: `${segment.startCol + 1} / span ${segment.endCol - segment.startCol + 1}`,
       }}
       className={cn(
-        "h-4 px-2 text-left text-[11px] leading-4 truncate transition-shadow",
+        "h-4 px-2 text-left text-[11px] leading-4 truncate transition-all",
         "hover:shadow-md hover:-translate-y-px",
         colorClass,
         segment.isRunStart ? "rounded-l-md" : "rounded-l-none",
