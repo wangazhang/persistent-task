@@ -1,7 +1,11 @@
+import { useState } from "react";
+import { TaskEditor } from "@/components/task/TaskEditor";
 import { useTaskStore } from "@/store/taskStore";
 import { useTagStore } from "@/store/tagStore";
+import type { Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useDataUrlState, type DataTab } from "./useDataUrlState";
+import { TasksTable } from "./tables/TasksTable";
 
 interface TabDef {
   key: DataTab;
@@ -14,6 +18,8 @@ export function DataPage() {
   const pomodoros = useTaskStore((s) => s.pomodoros);
   const tags = useTagStore((s) => s.tags);
   const { tab, setTab } = useDataUrlState();
+
+  const [editing, setEditing] = useState<Task | null>(null);
 
   const tabs: TabDef[] = [
     { key: "tasks", label: "任务", count: tasks.length },
@@ -46,11 +52,23 @@ export function DataPage() {
         ))}
       </div>
 
-      <div className="rounded-lg border border-ink-200 bg-white p-8 text-center text-sm text-ink-400">
-        {tab === "tasks" && "任务表格 · 待 Task 4 实现"}
-        {tab === "tags" && "标签表格 · 待 Task 6 实现"}
-        {tab === "pomodoros" && "番茄表格 · 待 Task 7 实现"}
-      </div>
+      {tab === "tasks" && <TasksTable onOpenTask={(t) => setEditing(t)} />}
+      {tab === "tags" && (
+        <div className="rounded-lg border border-ink-200 bg-white p-8 text-center text-sm text-ink-400">
+          标签表格 · 待 Task 6 实现
+        </div>
+      )}
+      {tab === "pomodoros" && (
+        <div className="rounded-lg border border-ink-200 bg-white p-8 text-center text-sm text-ink-400">
+          番茄表格 · 待 Task 7 实现
+        </div>
+      )}
+
+      <TaskEditor
+        open={!!editing}
+        task={editing}
+        onClose={() => setEditing(null)}
+      />
     </div>
   );
 }
