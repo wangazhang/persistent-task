@@ -21,10 +21,11 @@ export default defineConfig({
     },
   },
   envPrefix: ["VITE_", "TAURI_ENV_*"],
-  // sql.js 是混合 JS + WASM 包，vite 的依赖预构建会处理失败；
-  // wasm 文件通过 sqliteDb.ts 里的 `?url` 导入加载，不需要预构建。
+  // sql.js 发布的是 UMD 包，需要 vite 预构建（esbuild）做 CJS→ESM interop
+  // 才能生成 `import initSqlJs from "sql.js"` 的 default 导出。
+  // wasm 文件路径通过 sqliteDb.ts 里的 `?url` 显式导入，预构建不影响 wasm 加载。
   optimizeDeps: {
-    exclude: ["sql.js"],
+    include: ["sql.js"],
   },
   build: {
     target: "esnext",
