@@ -189,6 +189,7 @@ export function exportSqliteBytes(): Uint8Array {
  * 重新走 initWebDb() 从 IndexedDB 加载新库。
  */
 export async function replaceSqliteBytes(bytes: Uint8Array): Promise<void> {
+  if (persistTimer) clearTimeout(persistTimer);
   if (db) {
     db.close();
     db = null;
