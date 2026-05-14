@@ -190,3 +190,31 @@ export async function resetDb(): Promise<void> {
   await idbClear();
   await initWebDb();
 }
+
+/* ────────────────────────────────────────────────────────────
+ * 备份 / 还原（供 dbBackup.ts 使用）
+ * ──────────────────────────────────────────────────────────── */
+
+/** 导出当前 db 的完整字节（SQLite 文件格式）*/
+export function exportSqliteBytes(): Uint8Array {
+  return getDb().export();
+}
+
+/**
+ * 用传入字节替换当前 db。
+ *
+ * 流程：
+ *   1. 关闭当前内存中的 db 实例
+ *   2. 把字节写回 IndexedDB
+ *
+ * 调用方负责在替换完成后 location.reload()，让 main.tsx
+ * 重新走 initWebDb() 从 IndexedDB 加载新库。
+ */
+export async function replaceSqliteBytes(bytes: Uint8Array): Promise<void> {
+  if (persistTimer) clearTimeout(persistTimer);
+  if (db) {
+    db.close();
+    db = null;
+  }
+  await idbPut(bytes);
+}
