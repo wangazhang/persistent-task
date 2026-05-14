@@ -23,9 +23,9 @@ const SQLITE_MAGIC = "SQLite format 3\0";
 const REQUIRED_TABLES = ["tasks", "tags", "pomodoros"] as const;
 const MAX_BYTES = 200 * 1024 * 1024; // 200MB
 
-let SQL: SqlJsStatic | null = null;
-async function getSql(): Promise<SqlJsStatic> {
-  if (!SQL) SQL = await initSqlJs({ locateFile: () => wasmUrl });
+let SQL: Promise<SqlJsStatic> | null = null;
+function getSql(): Promise<SqlJsStatic> {
+  if (!SQL) SQL = initSqlJs({ locateFile: () => wasmUrl });
   return SQL;
 }
 
@@ -113,7 +113,8 @@ export interface ImportCounts {
  *   3. 写回 IndexedDB
  *   4. location.reload()
  *
- * 任何用户取消 / 校验失败都会以「不刷新」结束，原数据保持不变。
+ * 用户取消 / 校验失败 / 写入失败 都会以「不刷新」结束并提示用户；
+ * 注意：写入失败时内存中的 db 实例已被关闭，必须由用户手动刷新页面才能恢复。
  *
  * @param currentCounts 当前内存中的三类计数，用于二次确认提示
  */
@@ -156,6 +157,14 @@ export async function importDbFromFile(
   });
   if (!ok) return;
 
-  await replaceSqliteBytes(bytes);
+  try {
+    await replaceSqliteBytes(bytes);
+  } catch (e) {
+    await alert({
+      title: "导入失败",
+      message: `写入数据库失败：${String(e)}。请刷新页面后重试。`,
+    });
+    return;
+  }
   location.reload();
 }
