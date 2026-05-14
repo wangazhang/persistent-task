@@ -28,7 +28,8 @@ export interface DataTableProps<T> {
   searchPlaceholder?: string;
 }
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
+const DEFAULT_PAGE_SIZE = 20;
 
 export function DataTable<T>(props: DataTableProps<T>) {
   const {
@@ -43,6 +44,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
 
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [sortKey, setSortKey] = useState<string | null>(
     defaultSort?.key ?? null
   );
@@ -93,18 +95,23 @@ export function DataTable<T>(props: DataTableProps<T>) {
   }, [filtered, columns, sortKey, sortDir]);
 
   const total = sorted.length;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   useEffect(() => {
     if (page > pageCount) setPage(pageCount);
   }, [page, pageCount]);
   const clampedPage = Math.min(page, pageCount);
   const pageRows = sorted.slice(
-    (clampedPage - 1) * PAGE_SIZE,
-    clampedPage * PAGE_SIZE
+    (clampedPage - 1) * pageSize,
+    clampedPage * pageSize
   );
 
   function handleQueryChange(v: string) {
     setQuery(v);
+    setPage(1);
+  }
+
+  function handlePageSizeChange(v: number) {
+    setPageSize(v);
     setPage(1);
   }
 
@@ -190,8 +197,23 @@ export function DataTable<T>(props: DataTableProps<T>) {
         </table>
       </div>
 
-      {pageCount > 1 && (
-        <div className="flex items-center justify-end gap-3 border-t border-ink-200 px-4 py-2 text-xs text-ink-500">
+      <div className="flex items-center justify-between gap-3 border-t border-ink-200 px-4 py-2 text-xs text-ink-500">
+        <label className="inline-flex items-center gap-2">
+          <span>每页</span>
+          <select
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="rounded border border-ink-200 bg-white px-2 py-1 text-ink-700 focus:border-brand-500 focus:outline-none"
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <span>条</span>
+        </label>
+        <div className="flex items-center gap-3">
           <button
             type="button"
             disabled={clampedPage <= 1}
@@ -212,7 +234,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
             下一页
           </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
