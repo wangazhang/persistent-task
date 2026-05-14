@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { getAdapter } from "@/lib/dataAdapter";
-import { initialTags } from "@/lib/mockData";
 import type { Tag, TagNode } from "@/lib/types";
 import { uid } from "@/lib/utils";
 
@@ -53,12 +52,6 @@ export const useTagStore = create<TagStoreState>((set, get) => ({
     if (get().hydrated) return;
     const adapter = getAdapter();
     const tags = await adapter.listTags();
-    if (tags.length === 0) {
-      // 由 taskStore.hydrate 注入种子；这里兜底，避免单独使用 tagStore 时缺数据
-      for (const tg of initialTags) await adapter.upsertTag(tg);
-      set({ tags: initialTags, hydrated: true });
-      return;
-    }
     set({ tags, hydrated: true });
   },
 

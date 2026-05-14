@@ -17,6 +17,7 @@
     "@dnd-kit/sortable": "^8.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@tauri-apps/api": "^2.1.1",
+    "@types/sql.js": "^1.4.11",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
     "lucide-react": "^0.453.0",
@@ -24,6 +25,7 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.27.0",
     "recharts": "^2.13.0",
+    "sql.js": "^1.14.1",
     "tailwind-merge": "^2.5.4",
     "zustand": "^4.5.5"
   },

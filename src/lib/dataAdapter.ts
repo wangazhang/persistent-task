@@ -2,11 +2,14 @@
  * 数据访问抽象层。
  *
  * 两种实现：
- *   - LocalStorageAdapter：浏览器 dev 模式用，数据落 localStorage（key 三件套）
- *   - TauriAdapter：桌面端用，通过 invoke() 调 Rust commands，数据落 SQLite
+ *   - TauriAdapter：桌面端用，通过 invoke() 调 Rust commands，数据落本地 SQLite 文件。
+ *   - SqliteAdapter：Web 端用，sql.js + IndexedDB，整库序列化持久化。
  *
- * 两者方法签名一致，store 与组件无需关心当前在哪。
- * isTauri() 在启动时一次决断：window.__TAURI_INTERNALS__ 存在 → 桌面端。
+ * 两端 schema、SQL 语义完全对齐（详见 src/lib/webDb/schema.ts 与 src-tauri/src/db.rs）。
+ *
+ * 调用约定：
+ *   1. 启动时必须 await initAdapter() 完成初始化（main.tsx 已处理）。
+ *   2. 之后任意位置 getAdapter() 即可拿到已就绪的实例。
  */
 
 import type {
@@ -30,10 +33,7 @@ export interface DataAdapter {
   listPomodoros(): Promise<PomodoroSession[]>;
   insertPomodoro(s: PomodoroSession): Promise<void>;
 
-  /**
-   * 清空全部用户数据（用于「重置 demo」入口）。
-   * 调用方紧接着会 location.reload()，触发 store.hydrate() 重新种 mock。
-   */
+  /** 清空全部用户数据 */
   clearAll(): Promise<void>;
 }
 
@@ -41,7 +41,6 @@ export interface DataAdapter {
  * 检测是否运行在 Tauri 环境。
  *
  * 当 window.__TAURI_INTERNALS__ 存在时，说明 webview 由 Tauri 提供。
- * 在 Web 浏览器中开发时，会回落到 mock。
  */
 export function isTauri(): boolean {
   return (
@@ -61,7 +60,6 @@ export function isTauri(): boolean {
  */
 class TauriAdapter implements DataAdapter {
   private async invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-    // 按需 import，避免 web 模式打包时拉入 tauri runtime
     const { invoke } = await import("@tauri-apps/api/core");
     return invoke<T>(cmd, args);
   }
@@ -98,75 +96,40 @@ class TauriAdapter implements DataAdapter {
   }
 }
 
-/** 浏览器/开发环境用的 mock 适配器，使用 localStorage 持久化 */
-class LocalStorageAdapter implements DataAdapter {
-  private TASKS_KEY = "pt:tasks";
-  private TAGS_KEY = "pt:tags";
-  private POMOS_KEY = "pt:pomos";
+let _adapter: DataAdapter | null = null;
+let _initPromise: Promise<void> | null = null;
 
-  private read<T>(key: string): T[] {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? (JSON.parse(raw) as T[]) : [];
-    } catch {
-      return [];
+/**
+ * 异步初始化 adapter。Web 端会加载 sql.js wasm + 从 IndexedDB 恢复 DB；
+ * 桌面端直接构造 TauriAdapter（底层 SQLite 已在 Rust 的 setup 钩子里就绪）。
+ *
+ * Idempotent：重复调用返回同一个 promise。
+ */
+export function initAdapter(): Promise<void> {
+  if (_initPromise) return _initPromise;
+  _initPromise = (async () => {
+    if (isTauri()) {
+      _adapter = new TauriAdapter();
+    } else {
+      const [{ SqliteAdapter }, { initWebDb }] = await Promise.all([
+        import("./webDb/sqliteAdapter"),
+        import("./webDb/sqliteDb"),
+      ]);
+      await initWebDb();
+      _adapter = new SqliteAdapter();
     }
-  }
-  private write<T>(key: string, value: T[]) {
-    localStorage.setItem(key, JSON.stringify(value));
-  }
-
-  async listTasks() {
-    return this.read<Task>(this.TASKS_KEY);
-  }
-  async upsertTask(task: Task) {
-    const list = this.read<Task>(this.TASKS_KEY);
-    const idx = list.findIndex((t) => t.id === task.id);
-    if (idx >= 0) list[idx] = task;
-    else list.push(task);
-    this.write(this.TASKS_KEY, list);
-  }
-  async deleteTask(id: string) {
-    const list = this.read<Task>(this.TASKS_KEY).filter((t) => t.id !== id);
-    this.write(this.TASKS_KEY, list);
-  }
-  async listTags() {
-    return this.read<Tag>(this.TAGS_KEY);
-  }
-  async upsertTag(tag: Tag) {
-    const list = this.read<Tag>(this.TAGS_KEY);
-    const idx = list.findIndex((t) => t.id === tag.id);
-    if (idx >= 0) list[idx] = tag;
-    else list.push(tag);
-    this.write(this.TAGS_KEY, list);
-  }
-  async deleteTag(id: string) {
-    const list = this.read<Tag>(this.TAGS_KEY).filter((t) => t.id !== id);
-    this.write(this.TAGS_KEY, list);
-  }
-  async listPomodoros() {
-    return this.read<PomodoroSession>(this.POMOS_KEY);
-  }
-  async insertPomodoro(s: PomodoroSession) {
-    const list = this.read<PomodoroSession>(this.POMOS_KEY);
-    list.push(s);
-    this.write(this.POMOS_KEY, list);
-  }
-  async clearAll() {
-    try {
-      localStorage.removeItem(this.TASKS_KEY);
-      localStorage.removeItem(this.TAGS_KEY);
-      localStorage.removeItem(this.POMOS_KEY);
-    } catch {
-      /* ignore */
-    }
-  }
+  })();
+  return _initPromise;
 }
 
-let _adapter: DataAdapter | null = null;
-
+/**
+ * 拿到 adapter 实例。要求调用前 initAdapter() 已 await 完成。
+ */
 export function getAdapter(): DataAdapter {
-  if (_adapter) return _adapter;
-  _adapter = isTauri() ? new TauriAdapter() : new LocalStorageAdapter();
+  if (!_adapter) {
+    throw new Error(
+      "数据层尚未初始化：请在 main.tsx 入口处先 await initAdapter()"
+    );
+  }
   return _adapter;
 }

@@ -30,6 +30,9 @@ src-tauri/gen
 # TS incremental build cache
 *.tsbuildinfo
 
+# Playwright MCP test artifacts
+.playwright-mcp/
+
 # vite.config.ts compiled artifacts
 vite.config.js
 vite.config.d.ts

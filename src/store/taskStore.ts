@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { getAdapter } from "@/lib/dataAdapter";
-import { initialPomodoros, initialTasks } from "@/lib/mockData";
 import type {
   PomodoroSession,
   Task,
@@ -76,18 +75,6 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
       adapter.listTasks(),
       adapter.listPomodoros(),
     ]);
-    // 首次启动种子数据：仅当本地任务为空时注入 mock 任务与番茄历史。
-    // 标签的种子由 tagStore.hydrate 独立完成。
-    if (tasks.length === 0) {
-      for (const t of initialTasks) await adapter.upsertTask(t);
-      for (const p of initialPomodoros) await adapter.insertPomodoro(p);
-      set({
-        tasks: initialTasks,
-        pomodoros: initialPomodoros,
-        hydrated: true,
-      });
-      return;
-    }
     set({ tasks, pomodoros: pomos, hydrated: true });
   },
 
