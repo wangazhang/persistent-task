@@ -20,6 +20,27 @@ export interface TaskProgress {
 const TASK_LINE_RE = /^[ \t]*[-*+][ \t]+\[([ xX])\]/gm;
 
 /**
+ * 把 markdown 描述清理成"卡片预览用"的纯文本：
+ *   - 把 `- [ ] / - [x]` 前缀去掉，只保留文字
+ *   - 其它常见 md 标记（**bold** _italic_ # 等）也粗略剥离
+ *   - 空行折成单个换行；前后空白去掉
+ *
+ * 仅用于卡片 line-clamp 预览展示，不影响数据。
+ */
+export function descriptionPreview(md: string | undefined): string {
+  if (!md) return "";
+  return md
+    .replace(/^[ \t]*[-*+][ \t]+\[[ xX]\][ \t]*/gm, "") // 去掉 task list 前缀
+    .replace(/^[ \t]*[-*+][ \t]+/gm, "") // 去掉普通列表标记
+    .replace(/^#{1,6}[ \t]+/gm, "") // 去掉标题井号
+    .replace(/\*\*(.+?)\*\*/g, "$1") // 加粗
+    .replace(/\*(.+?)\*/g, "$1") // 斜体
+    .replace(/`(.+?)`/g, "$1") // 行内代码
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+}
+
+/**
  * 解析 markdown 中的子任务进度。
  * - 没有子任务返回 null（调用方据此决定是否显示进度环）
  * - 否则返回 { done, total, percent }
