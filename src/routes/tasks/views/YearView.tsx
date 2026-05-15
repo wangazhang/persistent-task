@@ -14,19 +14,39 @@ import {
   subYears,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  DndContext,
+  DragEndEvent,
+  DragStartEvent,
+  KeyboardSensor,
+  PointerSensor,
+  pointerWithin,
+  useDroppable,
+  useSensor,
+  useSensors,
+  DragOverlay,
+} from "@dnd-kit/core";
 import { useNavigate } from "react-router-dom";
 import type { Task } from "@/lib/types";
 import { cn, isoDate } from "@/lib/utils";
 import { usePomodoroStore } from "@/store/pomodoroStore";
 import { useTaskStore } from "@/store/taskStore";
+import { TaskCard } from "@/components/task/TaskCard";
 import { DaySection } from "./_DaySection";
-import { useDayMap, useTagFilterSet, type DayInfo } from "./_helpers";
+import { DayTasksPopover } from "./_DayTasksPopover";
+import {
+  isDragTask,
+  isDropDay,
+  modeFromEvent,
+  useDayMap,
+  useTagFilterSet,
+  type DayInfo,
+} from "./_helpers";
 
 /**
- * Year View：12 个迷你月热力图 + 选中日详情（只读，不参与拖拽）。
+ * Year View：12 个迷你月热力图 + 选中日详情 + 双击日格弹任务浮窗。
  *
- * 设计取舍：年视图粒度粗，拖任务到"某月"语义模糊，所以拖拽不在这里开放。
- * 想要改期请切到月/周视图。
+ * 浮窗内的任务可拖到本视图任意日格完成移动 / 复制（按 Option/Alt） / 替换（按 Shift）。
  */
 
 interface Props {
@@ -48,6 +68,7 @@ export function YearView({
 }: Props) {
   const navigate = useNavigate();
   const tasks = useTaskStore((s) => s.tasks);
+  const moveSchedule = useTaskStore((s) => s.moveSchedule);
   const tagFilter = useTagFilterSet(tags);
   const dayMap = useDayMap(tasks, tagFilter);
 
@@ -58,6 +79,35 @@ export function YearView({
       return cur.getFullYear() === sel.getFullYear() ? cur : sel;
     });
   }, [date]);
+
+  const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [mode, setMode] = useState<"move" | "add" | "replace">("move");
+  const [popover, setPopover] = useState<
+    | null
+    | { iso: string; rect: DOMRect }
+  >(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor)
+  );
+
+  function handleDragStart(e: DragStartEvent) {
+    const d = e.active.data.current;
+    if (isDragTask(d)) {
+      setActiveTask(tasks.find((t) => t.id === d.taskId) ?? null);
+      setMode(modeFromEvent(e.activatorEvent));
+    }
+  }
+  function handleDragEnd(e: DragEndEvent) {
+    setActiveTask(null);
+    const a = e.active.data.current;
+    const o = e.over?.data.current;
+    if (isDragTask(a) && isDropDay(o)) {
+      moveSchedule(a.taskId, a.fromDate, o.iso, mode);
+      setPopover(null);
+    }
+  }
 
   const yearStart = startOfYear(cursor);
   const months = useMemo(
@@ -88,63 +138,94 @@ export function YearView({
   }
 
   return (
-    <div>
-      <div className="mb-3 flex items-center justify-end gap-2">
-        <button
-          type="button"
-          className="rounded-lg border border-ink-200 p-1.5 text-ink-500 hover:bg-ink-50"
-          onClick={() => setCursor((d) => subYears(d, 1))}
-          aria-label="上一年"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        <div className="min-w-[6rem] text-center text-sm font-medium text-ink-700">
-          {format(cursor, "yyyy 年")}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pointerWithin}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div>
+        <div className="mb-3 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            className="rounded-lg border border-ink-200 p-1.5 text-ink-500 hover:bg-ink-50"
+            onClick={() => setCursor((d) => subYears(d, 1))}
+            aria-label="上一年"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <div className="min-w-[6rem] text-center text-sm font-medium text-ink-700">
+            {format(cursor, "yyyy 年")}
+          </div>
+          <button
+            type="button"
+            className="rounded-lg border border-ink-200 p-1.5 text-ink-500 hover:bg-ink-50"
+            onClick={() => setCursor((d) => addYears(d, 1))}
+            aria-label="下一年"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="btn-secondary ml-1 text-xs"
+            onClick={() => {
+              const now = new Date();
+              setCursor(now);
+              onDateChange(isoDate(now));
+            }}
+          >
+            回到今天
+          </button>
         </div>
-        <button
-          type="button"
-          className="rounded-lg border border-ink-200 p-1.5 text-ink-500 hover:bg-ink-50"
-          onClick={() => setCursor((d) => addYears(d, 1))}
-          aria-label="下一年"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          className="btn-secondary ml-1 text-xs"
-          onClick={() => {
-            const now = new Date();
-            setCursor(now);
-            onDateChange(isoDate(now));
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {months.map((m) => (
+            <MiniMonth
+              key={m.toISOString()}
+              month={m}
+              dayMap={dayMap}
+              maxInYear={maxInYear}
+              selectedISO={date}
+              onClickDay={onDateChange}
+              onClickHeader={() => onSwitchToMonth(format(m, "yyyy-MM-dd"))}
+              onOpenPopover={(iso, rect) => setPopover({ iso, rect })}
+            />
+          ))}
+        </div>
+
+        <DaySection
+          iso={date}
+          info={dayMap.get(date)}
+          filterActive={tagFilter !== null}
+          onEdit={onEdit}
+          onStartPomodoro={startPomodoroFor}
+          onNewTask={() => onNewTaskOnDate(date)}
+        />
+      </div>
+
+      <DragOverlay dropAnimation={null}>
+        {activeTask ? (
+          <div className="w-72">
+            <TaskCard task={activeTask} isDragging />
+          </div>
+        ) : null}
+      </DragOverlay>
+
+      {popover && (
+        <DayTasksPopover
+          iso={popover.iso}
+          tasks={dayMap.get(popover.iso)?.tasks ?? []}
+          anchor={popover.rect}
+          onClose={() => setPopover(null)}
+          onEdit={(t) => {
+            setPopover(null);
+            onEdit(t);
           }}
-        >
-          回到今天
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {months.map((m) => (
-          <MiniMonth
-            key={m.toISOString()}
-            month={m}
-            dayMap={dayMap}
-            maxInYear={maxInYear}
-            selectedISO={date}
-            onClickDay={onDateChange}
-            onClickHeader={() => onSwitchToMonth(format(m, "yyyy-MM-dd"))}
-          />
-        ))}
-      </div>
-
-      <DaySection
-        iso={date}
-        info={dayMap.get(date)}
-        filterActive={tagFilter !== null}
-        onEdit={onEdit}
-        onStartPomodoro={startPomodoroFor}
-        onNewTask={() => onNewTaskOnDate(date)}
-      />
-    </div>
+          onStartPomodoro={startPomodoroFor}
+          onNewTask={onNewTaskOnDate}
+        />
+      )}
+    </DndContext>
   );
 }
 
@@ -155,6 +236,7 @@ function MiniMonth({
   selectedISO,
   onClickDay,
   onClickHeader,
+  onOpenPopover,
 }: {
   month: Date;
   dayMap: Map<string, DayInfo>;
@@ -162,6 +244,7 @@ function MiniMonth({
   selectedISO: string;
   onClickDay: (iso: string) => void;
   onClickHeader: () => void;
+  onOpenPopover: (iso: string, rect: DOMRect) => void;
 }) {
   const days = useMemo(() => {
     const start = startOfWeek(startOfMonth(month), { weekStartsOn: 1 });
@@ -207,10 +290,13 @@ function MiniMonth({
           const heatBg =
             total > 0 ? `rgba(99, 102, 241, ${0.08 + heat * 0.35})` : undefined;
           return (
-            <button
+            <DroppableYearCell
               key={iso}
-              type="button"
+              iso={iso}
               onClick={() => onClickDay(iso)}
+              onDoubleClick={(rect) => onOpenPopover(iso, rect)}
+              title={total > 0 ? `${iso} · ${info?.done ?? 0}/${total}（双击查看）` : `${iso}（双击查看）`}
+              style={{ backgroundColor: heatBg }}
               className={cn(
                 "relative aspect-square rounded text-[10px] tabular-nums transition-colors",
                 !inMonth && "opacity-40",
@@ -220,8 +306,6 @@ function MiniMonth({
                   ? "ring-1 ring-brand-300"
                   : "hover:bg-ink-100"
               )}
-              style={{ backgroundColor: heatBg }}
-              title={total > 0 ? `${iso} · ${info?.done ?? 0}/${total}` : iso}
             >
               <span
                 className={cn(
@@ -231,10 +315,49 @@ function MiniMonth({
               >
                 {format(d, "d")}
               </span>
-            </button>
+            </DroppableYearCell>
           );
         })}
       </div>
     </div>
+  );
+}
+
+function DroppableYearCell({
+  iso,
+  onClick,
+  onDoubleClick,
+  className,
+  style,
+  title,
+  children,
+}: {
+  iso: string;
+  onClick: () => void;
+  onDoubleClick: (rect: DOMRect) => void;
+  className?: string;
+  style?: React.CSSProperties;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `daycell:${iso}`,
+    data: { type: "daycell", iso },
+  });
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      onClick={onClick}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onDoubleClick(e.currentTarget.getBoundingClientRect());
+      }}
+      title={title}
+      style={style}
+      className={cn(className, isOver && "ring-2 ring-brand-500")}
+    >
+      {children}
+    </button>
   );
 }
