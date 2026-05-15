@@ -1,8 +1,12 @@
 /**
- * 整库导入导出（Web 端）。
+ * 整库导入导出。
  *
- * 导出：sqliteDb.export() → 下载 .sqlite 文件
- * 导入：选文件 → 校验 → 双重确认 → 覆盖 IndexedDB → reload
+ * 导出 / 导入都通过 DataAdapter 转发：
+ *   - Web 端  → 走 sql.js + IndexedDB
+ *   - Tauri  → 走 Rust 端 export_db / replace_db 命令（操作磁盘 SQLite 文件）
+ *
+ * 校验在前端统一用 sql.js 完成（sql.js 在两端 webview 都可用），
+ * 校验通过后才把字节交给 adapter 落地。
  *
  * 校验三段：
  *   1) 文件头 16 字节 = "SQLite format 3\0"
@@ -13,10 +17,7 @@
 import initSqlJs from "sql.js/dist/sql-wasm.js";
 import type { SqlJsStatic } from "sql.js";
 import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
-import {
-  exportSqliteBytes,
-  replaceSqliteBytes,
-} from "./webDb/sqliteDb";
+import { getAdapter } from "./dataAdapter";
 import { alert, confirm } from "@/store/dialogStore";
 
 const SQLITE_MAGIC = "SQLite format 3\0";
@@ -38,8 +39,17 @@ function formatTs(d: Date): string {
 }
 
 /** 触发浏览器下载，文件名带时间戳，避免覆盖 */
-export function exportDbToFile(): void {
-  const bytes = exportSqliteBytes();
+export async function exportDbToFile(): Promise<void> {
+  let bytes: Uint8Array;
+  try {
+    bytes = await getAdapter().exportDb();
+  } catch (e) {
+    await alert({
+      title: "导出失败",
+      message: `读取数据库失败：${String(e)}`,
+    });
+    return;
+  }
   const blob = new Blob([bytes.slice().buffer], {
     type: "application/x-sqlite3",
   });
@@ -158,7 +168,7 @@ export async function importDbFromFile(
   if (!ok) return;
 
   try {
-    await replaceSqliteBytes(bytes);
+    await getAdapter().replaceDb(bytes);
   } catch (e) {
     await alert({
       title: "导入失败",

@@ -16,7 +16,14 @@ import type {
   TaskPriority,
   TaskStatus,
 } from "../types";
-import { query, resetDb, run, tx } from "./sqliteDb";
+import {
+  exportSqliteBytes,
+  query,
+  replaceSqliteBytes,
+  resetDb,
+  run,
+  tx,
+} from "./sqliteDb";
 
 type Row = Record<string, unknown>;
 
@@ -220,5 +227,15 @@ export class SqliteAdapter implements DataAdapter {
     // 删 .db 字节并重建空库 + schema —— 比逐表 DELETE 更彻底，
     // 同时避免 auto-increment 残留（虽然此项目用 TEXT id 不依赖它）
     await resetDb();
+  }
+
+  /* ──────────────── Backup / Restore ──────────────── */
+
+  async exportDb(): Promise<Uint8Array> {
+    return exportSqliteBytes();
+  }
+
+  async replaceDb(bytes: Uint8Array): Promise<void> {
+    await replaceSqliteBytes(bytes);
   }
 }

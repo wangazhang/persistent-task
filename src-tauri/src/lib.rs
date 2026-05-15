@@ -44,6 +44,8 @@ pub fn run() {
             commands::insert_pomodoro,
             commands::delete_pomodoro,
             commands::clear_all,
+            commands::export_db,
+            commands::replace_db,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");

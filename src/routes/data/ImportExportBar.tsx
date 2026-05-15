@@ -7,8 +7,8 @@ import { useTagStore } from "@/store/tagStore";
 export function ImportExportBar() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  function handleExport() {
-    exportDbToFile();
+  async function handleExport() {
+    await exportDbToFile();
   }
 
   function openFilePicker() {
