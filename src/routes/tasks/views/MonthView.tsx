@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   addMonths,
   eachDayOfInterval,
@@ -20,9 +20,12 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  useDndContext,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { rangeFromDrag } from "./_monthDragRange";
+import { QuickCreateBubble } from "./_QuickCreateBubble";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { TaskCard } from "@/components/task/TaskCard";
@@ -55,6 +58,15 @@ import { useWeekBars } from "./_monthBars";
  * cursor 控制翻页位置（影响月历显示哪一个月），date 控制 DaySection 显示哪一天。
  * 翻页只动 cursor，不动 date，避免"翻一下，选中日跑了"的不可预期感。
  */
+
+function PointerEventsGuard({ children }: { children: React.ReactNode }) {
+  const { active } = useDndContext();
+  return (
+    <div className={active ? "pointer-events-none" : undefined}>
+      {children}
+    </div>
+  );
+}
 
 interface Props {
   date: string;
@@ -116,6 +128,62 @@ export function MonthView({
   // 修饰键在 dragStart 时锁定；松手前改键无效（避免视觉反馈与最终结果错位）
   const [mode, setMode] = useState<"move" | "add" | "replace">("move");
 
+  // 框选状态
+  const [dragSel, setDragSel] = useState<
+    | null
+    | {
+        startISO: string;
+        currentISO: string;
+        weekEndISO: string;
+      }
+  >(null);
+  const [bubble, setBubble] = useState<
+    | null
+    | { start: string; end: string; truncated: boolean; x: number; y: number }
+  >(null);
+  const addTask = useTaskStore((s) => s.addTask);
+  const updateTask = useTaskStore((s) => s.updateTask);
+
+  // 拖出 weekRow 后才松开鼠标的话，本地 onMouseUp 不会触发；
+  // 这里挂一个 window 级 mouseup 兜底清状态，避免格子持续高亮。
+  useEffect(() => {
+    if (!dragSel) return;
+    function clear() {
+      setTimeout(() => setDragSel((cur) => (cur ? null : cur)), 0);
+    }
+    window.addEventListener("mouseup", clear);
+    return () => window.removeEventListener("mouseup", clear);
+  }, [dragSel]);
+
+  function handleBarResize(
+    taskId: string,
+    edge: "start" | "end",
+    clientX: number,
+    clientY: number
+  ) {
+    const cell = document
+      .elementFromPoint(clientX, clientY)
+      ?.closest("[data-cell-iso]") as HTMLElement | null;
+    if (!cell?.dataset.cellIso) return;
+    const targetISO = cell.dataset.cellIso;
+    const t = taskById.get(taskId);
+    if (!t || t.scheduledDates.length === 0) return;
+    const sorted = [...t.scheduledDates].sort();
+    const start = sorted[0];
+    const end = sorted[sorted.length - 1];
+    const newStart = edge === "start" ? (targetISO > end ? end : targetISO) : start;
+    const newEnd = edge === "end" ? (targetISO < start ? start : targetISO) : end;
+    const arr: string[] = [];
+    for (
+      let cur = new Date(newStart);
+      cur <= new Date(newEnd);
+      cur.setDate(cur.getDate() + 1)
+    ) {
+      arr.push(format(cur, "yyyy-MM-dd"));
+    }
+    updateTask(taskId, { scheduledDates: arr });
+  }
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor)
@@ -171,7 +239,8 @@ export function MonthView({
           </div>
         ))}
       </div>
-      <div className="flex flex-col gap-1.5">
+      <PointerEventsGuard>
+        <div className="flex flex-col gap-1.5">
         {Array.from({ length: 6 }, (_, weekRow) => {
           const weekDays = days.slice(weekRow * 7, weekRow * 7 + 7);
           const bars = weekBars[weekRow];
@@ -180,20 +249,72 @@ export function MonthView({
               周行容器：relative 让色带 absolute 子层与 7 列 cell 重叠。
               DayCell 内部留出 BAR_TOP_OFFSET_PX 给色带区，摘要文字下移 mt-9。
               色带容器 pointer-events-none 让 cell 点击穿透，色带 button 自身 auto。
+              叠加：横拖框选新建任务（mousedown/move/up 透传到 cell）。
             */
-            <div key={weekRow} className="relative grid grid-cols-7 gap-1.5">
-              {weekDays.map((day) => (
-                <DroppableDayCell
-                  key={day.toISOString()}
-                  day={day}
-                  cursor={cursor}
-                  selectedISO={date}
-                  info={dayMap.get(format(day, "yyyy-MM-dd"))}
-                  maxScale={maxInMonth}
-                  onPick={onDateChange}
-                  coveredTaskIds={bars.coveredTaskIds}
-                />
-              ))}
+            <div
+              key={weekRow}
+              className="relative grid grid-cols-7 gap-1.5"
+              onMouseDown={(e) => {
+                const cell = (e.target as Element).closest("[data-cell-iso]");
+                if (!cell) return;
+                const iso = (cell as HTMLElement).dataset.cellIso!;
+                const weekDaysISO = weekDays.map((d) => format(d, "yyyy-MM-dd"));
+                const weekEndISO = weekDaysISO[weekDaysISO.length - 1];
+                setDragSel({ startISO: iso, currentISO: iso, weekEndISO });
+              }}
+              onMouseMove={(e) => {
+                if (!dragSel) return;
+                const el = document
+                  .elementFromPoint(e.clientX, e.clientY)
+                  ?.closest("[data-cell-iso]") as HTMLElement | null;
+                if (el && el.dataset.cellIso) {
+                  setDragSel((prev) =>
+                    prev ? { ...prev, currentISO: el.dataset.cellIso! } : prev
+                  );
+                }
+              }}
+              onMouseUp={(e) => {
+                if (!dragSel) return;
+                // 单击单格（未发生横拖）不弹气泡，留给 DayCell 自己的 onClick 选日。
+                if (dragSel.startISO === dragSel.currentISO) {
+                  setDragSel(null);
+                  return;
+                }
+                const r = rangeFromDrag(
+                  dragSel.startISO,
+                  dragSel.currentISO,
+                  dragSel.weekEndISO
+                );
+                setDragSel(null);
+                setBubble({
+                  start: r.start,
+                  end: r.end,
+                  truncated: r.truncated,
+                  x: e.clientX,
+                  y: e.clientY,
+                });
+              }}
+            >
+              {weekDays.map((day) => {
+                const dayISO = format(day, "yyyy-MM-dd");
+                const inDrag =
+                  dragSel != null &&
+                  ((dayISO >= dragSel.startISO && dayISO <= dragSel.currentISO) ||
+                    (dayISO >= dragSel.currentISO && dayISO <= dragSel.startISO));
+                return (
+                  <DroppableDayCell
+                    key={day.toISOString()}
+                    day={day}
+                    cursor={cursor}
+                    selectedISO={date}
+                    info={dayMap.get(dayISO)}
+                    maxScale={maxInMonth}
+                    onPick={onDateChange}
+                    coveredTaskIds={bars.coveredTaskIds}
+                    dragHighlight={inDrag}
+                  />
+                );
+              })}
               <div className="pointer-events-none absolute inset-0">
                 {bars.segments.map((seg) => {
                   const task = taskById.get(seg.taskId);
@@ -205,6 +326,7 @@ export function MonthView({
                       task={task}
                       onClick={() => onDateChange(task.scheduledDates[0])}
                       onEdit={onEdit}
+                      onResize={handleBarResize}
                     />
                   );
                 })}
@@ -217,7 +339,8 @@ export function MonthView({
             </div>
           );
         })}
-      </div>
+        </div>
+      </PointerEventsGuard>
 
       <DaySection
         iso={date}
@@ -257,6 +380,35 @@ export function MonthView({
           </div>
         ) : null}
       </DragOverlay>
+
+      {bubble && (
+        <QuickCreateBubble
+          start={bubble.start}
+          end={bubble.end}
+          truncated={bubble.truncated}
+          x={bubble.x}
+          y={bubble.y}
+          onCreate={(title) => {
+            const dates =
+              bubble.start === bubble.end
+                ? [bubble.start]
+                : (() => {
+                    const arr: string[] = [];
+                    for (
+                      let cur = new Date(bubble.start);
+                      cur <= new Date(bubble.end);
+                      cur.setDate(cur.getDate() + 1)
+                    ) {
+                      arr.push(format(cur, "yyyy-MM-dd"));
+                    }
+                    return arr;
+                  })();
+            addTask({ title, scheduledDates: dates });
+            setBubble(null);
+          }}
+          onCancel={() => setBubble(null)}
+        />
+      )}
     </DndContext>
   );
 }
@@ -320,6 +472,7 @@ function DroppableDayCell({
   maxScale,
   onPick,
   coveredTaskIds,
+  dragHighlight,
 }: {
   day: Date;
   cursor: Date;
@@ -328,6 +481,7 @@ function DroppableDayCell({
   maxScale: number;
   onPick: (iso: string) => void;
   coveredTaskIds: Set<string>;
+  dragHighlight?: boolean;
 }) {
   const iso = format(day, "yyyy-MM-dd");
   const { setNodeRef, isOver } = useDroppable({
@@ -347,6 +501,7 @@ function DroppableDayCell({
   return (
     <div
       ref={setNodeRef}
+      data-cell-iso={iso}
       className={cn(
         "relative h-24 rounded-lg border p-1.5 transition-all",
         fade ? "opacity-50" : "",
@@ -354,7 +509,8 @@ function DroppableDayCell({
           ? "border-brand-500 bg-brand-50 ring-2 ring-brand-300"
           : selected
           ? "border-brand-400 ring-2 ring-brand-200"
-          : "border-ink-200 hover:border-ink-300"
+          : "border-ink-200 hover:border-ink-300",
+        dragHighlight && "ring-2 ring-brand-300"
       )}
       style={{ backgroundColor: isOver ? undefined : heatBg }}
     >

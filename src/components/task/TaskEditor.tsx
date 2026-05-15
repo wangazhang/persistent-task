@@ -9,6 +9,9 @@ import { PRESET_COLORS } from "@/lib/colors";
 import { Modal } from "@/components/ui/Modal";
 import { PriorityPicker } from "@/components/ui/PriorityPicker";
 import { TagHierarchyPicker } from "@/components/ui/TagHierarchyPicker";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
+import { isContiguous } from "@/lib/dateRange";
 
 interface TaskEditorProps {
   open: boolean;
@@ -40,6 +43,7 @@ export function TaskEditor({
   const [newDate, setNewDate] = useState(defaultDate ?? isoDate());
   // undefined = 未设（按优先级/状态色降级）；string = 用户选定 hex
   const [color, setColor] = useState<string | undefined>(undefined);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // 初始化 / 切换 task
   useEffect(() => {
@@ -66,6 +70,9 @@ export function TaskEditor({
       setColor(undefined);
     }
     setNewDate(defaultDate ?? isoDate());
+    // 不连续日期时自动展开进阶面板，避免用户感觉日期"消失了"
+    const initial = task ? task.scheduledDates : defaultDate ? [defaultDate] : [isoDate()];
+    setAdvancedOpen(initial.length > 1 && !isContiguous(initial));
   }, [open, task, defaultDate]);
 
   function addDate() {
@@ -275,40 +282,69 @@ export function TaskEditor({
 
         <div>
           <label className="mb-1 block text-xs font-medium text-ink-500">
-            排期日期（任务会出现在所有所选日期的「今日任务」）
+            排期日期
           </label>
-          <div className="flex flex-wrap gap-1.5">
-            {scheduledDates.map((d) => (
-              <span
-                key={d}
-                className="chip border border-brand-200 bg-brand-50 text-brand-700"
-              >
-                {d}
-                <button
-                  type="button"
-                  onClick={() => removeDate(d)}
-                  className="ml-0.5 text-brand-500 hover:text-brand-700"
-                >
-                  ✕
-                </button>
-              </span>
-            ))}
-            <div className="flex items-center gap-1">
-              <input
-                type="date"
-                className="input h-7 w-auto py-0 text-xs"
-                value={newDate}
-                onChange={(e) => setNewDate(e.target.value)}
-              />
-              <button
-                type="button"
-                className="btn-secondary h-7 px-2 py-0 text-xs"
-                onClick={addDate}
-              >
-                添加
-              </button>
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <DateRangePicker
+              value={scheduledDates}
+              onChange={setScheduledDates}
+            />
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((v) => !v)}
+              className="inline-flex items-center gap-0.5 text-[11px] text-ink-500 hover:text-ink-700"
+            >
+              {advancedOpen ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              单独添加
+            </button>
           </div>
+
+          {advancedOpen && (
+            <div className="mt-2 rounded-md border border-dashed border-ink-200 p-2">
+              {scheduledDates.length > 1 && !isContiguous(scheduledDates) && (
+                <p className="mb-1 text-[11px] text-ink-400">
+                  当前日期不连续，建议在此精细管理
+                </p>
+              )}
+              <div className="flex flex-wrap gap-1.5">
+                {scheduledDates.map((d) => (
+                  <span
+                    key={d}
+                    className="chip border border-brand-200 bg-brand-50 text-brand-700"
+                  >
+                    {d}
+                    <button
+                      type="button"
+                      onClick={() => removeDate(d)}
+                      className="ml-0.5 text-brand-500 hover:text-brand-700"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+                <div className="flex items-center gap-1">
+                  <input
+                    type="date"
+                    className="input h-7 w-auto py-0 text-xs"
+                    value={newDate}
+                    onChange={(e) => setNewDate(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn-secondary h-7 px-2 py-0 text-xs"
+                    onClick={addDate}
+                  >
+                    添加
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {status === "done" && scheduledDates.length === 0 && (
             <p className="mt-1 text-[11px] text-ink-400">
               已完成任务暂无排期；如需让其重新出现在某天列表，可在此添加日期
