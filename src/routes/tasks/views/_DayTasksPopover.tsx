@@ -26,8 +26,8 @@ interface Props {
   onNewTask?: (iso: string) => void;
 }
 
-const POP_W = 320;
-const POP_MAX_H = 440;
+const POP_W = 460;
+const POP_MAX_H = 640;
 
 export function DayTasksPopover({
   iso,
