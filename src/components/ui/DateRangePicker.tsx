@@ -1,5 +1,6 @@
 // src/components/ui/DateRangePicker.tsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   addMonths,
   endOfMonth,
@@ -43,6 +44,10 @@ export function DateRangePicker({ value, onChange, className }: Props) {
   })();
   const [cursor, setCursor] = useState<Date>(initialCursor);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  // 弹层屏幕坐标（portal 渲染需要）
+  const [popPos, setPopPos] = useState<{ top: number; left: number } | null>(null);
 
   // 每次打开重置 pending 并把 cursor 对齐到当前 value
   useEffect(() => {
@@ -57,7 +62,10 @@ export function DateRangePicker({ value, onChange, className }: Props) {
   useEffect(() => {
     if (!open) return;
     function onMouseDown(e: MouseEvent) {
-      if (!containerRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (containerRef.current?.contains(t)) return;
+      if (popoverRef.current?.contains(t)) return;
+      setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -67,6 +75,40 @@ export function DateRangePicker({ value, onChange, className }: Props) {
     return () => {
       window.removeEventListener("mousedown", onMouseDown);
       window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // 弹层定位：基于触发器位置，按可视窗口边界翻转
+  useLayoutEffect(() => {
+    if (!open) {
+      setPopPos(null);
+      return;
+    }
+    function place() {
+      const trig = triggerRef.current;
+      if (!trig) return;
+      const r = trig.getBoundingClientRect();
+      const W = 280;
+      const H = 340; // 估算高度（导航 + 预设 + 6 行日历 + 提示）
+      const margin = 4;
+      // 默认向下；下方不够时向上翻
+      let top = r.bottom + margin;
+      if (top + H > window.innerHeight - margin) {
+        top = Math.max(margin, r.top - H - margin);
+      }
+      // 默认左对齐；右边出界时贴右
+      let left = r.left;
+      if (left + W > window.innerWidth - margin) {
+        left = Math.max(margin, window.innerWidth - W - margin);
+      }
+      setPopPos({ top, left });
+    }
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
     };
   }, [open]);
 
@@ -118,6 +160,7 @@ export function DateRangePicker({ value, onChange, className }: Props) {
     <div ref={containerRef} className={cn("relative inline-block", className)}>
       <button
         type="button"
+        ref={triggerRef}
         onClick={() => setOpen((v) => !v)}
         className={cn(
           "inline-flex items-center gap-1.5 rounded-md border border-ink-200 bg-white px-2.5 py-1.5 text-xs transition-colors",
@@ -128,10 +171,11 @@ export function DateRangePicker({ value, onChange, className }: Props) {
         <span>{triggerLabel}</span>
       </button>
 
-      {open && (
+      {open && popPos && createPortal(
         <div
-          className="absolute z-50 mt-1 w-[280px] rounded-lg border border-ink-200 bg-white p-3 shadow-card"
-          style={{ top: "100%", left: 0 }}
+          ref={popoverRef}
+          className="fixed z-[60] w-[280px] rounded-lg border border-ink-200 bg-white p-3 shadow-card"
+          style={{ top: popPos.top, left: popPos.left }}
         >
           {/* 月份导航 */}
           <div className="mb-2 flex items-center justify-between">
@@ -176,7 +220,8 @@ export function DateRangePicker({ value, onChange, className }: Props) {
           <p className="mt-2 text-[11px] text-ink-400">
             {pending && pending.end === null ? "再点一天作为终点" : "点起点 → 点终点"}
           </p>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
