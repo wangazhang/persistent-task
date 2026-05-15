@@ -75,6 +75,22 @@ function hasSqliteMagic(bytes: Uint8Array): boolean {
 interface ValidateResult {
   ok: boolean;
   reason?: string;
+  /** 校验通过时附带文件里各表的条数，供二次确认提示展示 */
+  counts?: ImportCounts;
+}
+
+function countTable(
+  db: import("sql.js").Database,
+  table: string
+): number {
+  const stmt = db.prepare(`SELECT COUNT(*) AS n FROM ${table}`);
+  try {
+    stmt.step();
+    const row = stmt.getAsObject() as { n?: number };
+    return Number(row.n ?? 0);
+  } finally {
+    stmt.free();
+  }
 }
 
 /** 真打开一次确认结构正确（用完即关，不污染主 db 实例）*/
@@ -104,7 +120,14 @@ async function validateBytes(bytes: Uint8Array): Promise<ValidateResult> {
         return { ok: false, reason: `缺少必需的表：${t}` };
       }
     }
-    return { ok: true };
+    return {
+      ok: true,
+      counts: {
+        tasks: countTable(tmp, "tasks"),
+        tags: countTable(tmp, "tags"),
+        pomodoros: countTable(tmp, "pomodoros"),
+      },
+    };
   } finally {
     tmp.close();
   }
@@ -154,13 +177,13 @@ export async function importDbFromFile(
     return;
   }
 
+  const fileCounts = validation.counts ?? { tasks: 0, tags: 0, pomodoros: 0 };
   const ok = await confirm({
     title: "覆盖导入",
     message:
-      `导入会用文件中的数据完全替换当前所有任务、标签、番茄记录，且不可撤销。\n\n` +
-      `当前数据：${currentCounts.tasks} 个任务 / ` +
-      `${currentCounts.tags} 个标签 / ` +
-      `${currentCounts.pomodoros} 条番茄。\n\n确认继续？`,
+      `将用文件中的 ${fileCounts.tasks} 个任务 / ${fileCounts.tags} 个标签 / ${fileCounts.pomodoros} 条番茄，\n` +
+      `覆盖当前的 ${currentCounts.tasks} 个任务 / ${currentCounts.tags} 个标签 / ${currentCounts.pomodoros} 条番茄。\n\n` +
+      `此操作不可撤销，确认继续？`,
     confirmText: "覆盖导入",
     cancelText: "取消",
     danger: true,
