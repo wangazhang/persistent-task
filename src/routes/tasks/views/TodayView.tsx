@@ -27,6 +27,7 @@ import type { Task, TaskPriority } from "@/lib/types";
 import { isoDate } from "@/lib/utils";
 import { usePomodoroStore } from "@/store/pomodoroStore";
 import { useTaskStore } from "@/store/taskStore";
+import { taskSorter } from "./_helpers";
 
 /**
  * Today view：聚焦今日，保留快速添加输入框和同日内拖拽排序。
@@ -84,7 +85,7 @@ export function TodayView({ onEdit, onCreate }: Props) {
           t.status !== "done" &&
           t.status !== "suspended"
       )
-      .sort((a, b) => a.order - b.order);
+      .sort(taskSorter);
   }, [tasks, today]);
 
   const suspendedToday = useMemo(() => {
@@ -92,7 +93,7 @@ export function TodayView({ onEdit, onCreate }: Props) {
       .filter(
         (t) => t.status === "suspended" && t.scheduledDates.includes(today)
       )
-      .sort((a, b) => a.order - b.order);
+      .sort(taskSorter);
   }, [tasks, today]);
 
   const completedToday = useMemo(() => {
