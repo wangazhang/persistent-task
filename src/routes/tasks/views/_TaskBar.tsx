@@ -29,8 +29,13 @@ interface TaskBarProps {
   task: Task;
   onClick: () => void;
   onEdit?: (task: Task) => void;
-  /** 拖 resize：返回新的 [start, end]（端点 ISO）。 */
-  onResize?: (taskId: string, edge: "start" | "end", clientX: number) => void;
+  /** 拖 resize：根据光标位置实时换算落点格子。 */
+  onResize?: (
+    taskId: string,
+    edge: "start" | "end",
+    clientX: number,
+    clientY: number
+  ) => void;
 }
 
 export function TaskBar({ segment, task, onClick, onEdit, onResize }: TaskBarProps) {
@@ -48,7 +53,7 @@ export function TaskBar({ segment, task, onClick, onEdit, onResize }: TaskBarPro
     draggingEdge.current = edge;
     function move(ev: MouseEvent) {
       if (!draggingEdge.current) return;
-      onResize!(task.id, draggingEdge.current, ev.clientX);
+      onResize!(task.id, draggingEdge.current, ev.clientX, ev.clientY);
     }
     function up() {
       draggingEdge.current = null;

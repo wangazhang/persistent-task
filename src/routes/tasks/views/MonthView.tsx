@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   addMonths,
   eachDayOfInterval,
@@ -143,7 +143,6 @@ export function MonthView({
   >(null);
   const addTask = useTaskStore((s) => s.addTask);
   const updateTask = useTaskStore((s) => s.updateTask);
-  const monthGridRef = useRef<HTMLDivElement>(null);
 
   // 拖出 weekRow 后才松开鼠标的话，本地 onMouseUp 不会触发；
   // 这里挂一个 window 级 mouseup 兜底清状态，避免格子持续高亮。
@@ -156,13 +155,14 @@ export function MonthView({
     return () => window.removeEventListener("mouseup", clear);
   }, [dragSel]);
 
-  function handleBarResize(taskId: string, edge: "start" | "end", clientX: number) {
-    const grid = monthGridRef.current;
-    if (!grid) return;
-    const rect = grid.getBoundingClientRect();
-    const probeY = rect.top + rect.height / 2;
+  function handleBarResize(
+    taskId: string,
+    edge: "start" | "end",
+    clientX: number,
+    clientY: number
+  ) {
     const cell = document
-      .elementFromPoint(clientX, probeY)
+      .elementFromPoint(clientX, clientY)
       ?.closest("[data-cell-iso]") as HTMLElement | null;
     if (!cell?.dataset.cellIso) return;
     const targetISO = cell.dataset.cellIso;
@@ -240,7 +240,7 @@ export function MonthView({
         ))}
       </div>
       <PointerEventsGuard>
-        <div ref={monthGridRef} className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1.5">
         {Array.from({ length: 6 }, (_, weekRow) => {
           const weekDays = days.slice(weekRow * 7, weekRow * 7 + 7);
           const bars = weekBars[weekRow];
