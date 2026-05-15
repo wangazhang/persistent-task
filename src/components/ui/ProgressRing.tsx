@@ -15,9 +15,9 @@ import { cn } from "@/lib/utils";
 interface ProgressRingProps {
   /** 0-100 整数 */
   percent: number;
-  /** 像素尺寸（含 stroke）。默认 28。 */
+  /** 像素尺寸（含 stroke）。默认 36。 */
   size?: number;
-  /** 环宽。默认 3。 */
+  /** 环宽。默认 3.5。 */
   stroke?: number;
   className?: string;
 }
@@ -31,8 +31,8 @@ function colorClass(percent: number): string {
 
 export function ProgressRing({
   percent,
-  size = 28,
-  stroke = 3,
+  size = 36,
+  stroke = 3.5,
   className,
 }: ProgressRingProps) {
   const p = Math.max(0, Math.min(100, Math.round(percent)));
@@ -80,11 +80,11 @@ export function ProgressRing({
         y={cy}
         textAnchor="middle"
         dominantBaseline="central"
-        fontSize={size <= 24 ? 7 : 8}
+        fontSize={Math.max(8, Math.round(size * 0.36))}
         fontWeight={600}
         fill="currentColor"
       >
-        {p}%
+        {p}
       </text>
     </svg>
   );
