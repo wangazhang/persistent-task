@@ -6,12 +6,15 @@ import { useTaskStore } from "@/store/taskStore";
 import { alert as dialogAlert } from "@/store/dialogStore";
 import { cn, isoDate } from "@/lib/utils";
 import { PRESET_COLORS } from "@/lib/colors";
+import { parseTaskProgress } from "@/lib/taskProgress";
 import { Modal } from "@/components/ui/Modal";
 import { PriorityPicker } from "@/components/ui/PriorityPicker";
 import { TagHierarchyPicker } from "@/components/ui/TagHierarchyPicker";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { isContiguous } from "@/lib/dateRange";
+import { RichDescription } from "@/components/ui/RichDescription";
+import { ProgressRing } from "@/components/ui/ProgressRing";
 
 interface TaskEditorProps {
   open: boolean;
@@ -91,10 +94,21 @@ export function TaskEditor({
       await dialogAlert({ title: "无法保存", message: "任务标题不能为空。" });
       return;
     }
+    // 100% 子任务 → 自动 done。仅当当前 status 还不是 done 时联动，
+    // 避免覆盖用户已显式标完成的 completedAt。
+    const progress = parseTaskProgress(description);
+    let nextStatus = status;
+    let completedAt: string | undefined;
+    if (progress && progress.total > 0 && progress.done === progress.total) {
+      if (status !== "done") {
+        nextStatus = "done";
+        completedAt = new Date().toISOString();
+      }
+    }
     const payload: Partial<Task> = {
       title: title.trim(),
       description: description.trim(),
-      status,
+      status: nextStatus,
       priority,
       tagIds,
       docUrl: docUrl.trim() || undefined,
@@ -104,6 +118,7 @@ export function TaskEditor({
       // 这样取消完成或恢复时跨天信息不会丢失
       scheduledDates,
     };
+    if (completedAt) payload.completedAt = completedAt;
     if (task) {
       updateTask(task.id, payload);
     } else {
@@ -144,15 +159,22 @@ export function TaskEditor({
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-ink-500">
-            任务简述
-          </label>
-          <textarea
-            className="input min-h-[80px]"
-            placeholder="可写明背景、关键步骤、验收标准等"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
+          <div className="mb-1 flex items-center justify-between">
+            <label className="block text-xs font-medium text-ink-500">
+              任务简述（支持子任务：输入 <code className="rounded bg-ink-100 px-1 text-[11px]">[ ]</code> 加空格自动转勾选框）
+            </label>
+            {(() => {
+              const p = parseTaskProgress(description);
+              if (!p) return null;
+              return (
+                <span className="flex items-center gap-1.5 text-[11px] text-ink-500">
+                  <ProgressRing percent={p.percent} size={22} stroke={2.5} />
+                  {p.done}/{p.total}
+                </span>
+              );
+            })()}
+          </div>
+          <RichDescription value={description} onChange={setDescription} />
         </div>
 
         <div>

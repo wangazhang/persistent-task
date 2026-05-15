@@ -19,6 +19,8 @@ import { TagChip } from "@/components/ui/TagChip";
 import { StatusPicker } from "@/components/ui/StatusPicker";
 import { PriorityPicker } from "@/components/ui/PriorityPicker";
 import { ContextMenu, type ContextMenuItem } from "@/components/ui/ContextMenu";
+import { ProgressRing } from "@/components/ui/ProgressRing";
+import { descriptionPreview, parseTaskProgress } from "@/lib/taskProgress";
 
 interface TaskCardProps {
   task: Task;
@@ -46,6 +48,8 @@ export function TaskCard({
 
   const isDone = task.status === "done";
   const isSuspended = task.status === "suspended";
+  const progress = parseTaskProgress(task.description);
+  const descPreview = descriptionPreview(task.description);
   const priority: TaskPriority = task.priority ?? "p2";
 
   // 右键菜单状态：null = 关闭；{x, y} = 在该坐标打开
@@ -196,7 +200,7 @@ export function TaskCard({
       {/* 主体 */}
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div
               className={cn(
                 "truncate text-sm font-medium text-ink-800",
@@ -206,12 +210,18 @@ export function TaskCard({
             >
               {task.title}
             </div>
-            {task.description && (
-              <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-500">
-                {task.description}
+            {descPreview && (
+              <p className="mt-1 line-clamp-2 whitespace-pre-line text-xs leading-relaxed text-ink-500">
+                {descPreview}
               </p>
             )}
           </div>
+          {/* 进度环：仅当 description 含子任务时显示。常驻可见（不随 hover 隐藏）。*/}
+          {progress && (
+            <div className="shrink-0" title={`子任务 ${progress.done}/${progress.total} 已完成`}>
+              <ProgressRing percent={progress.percent} size={28} stroke={3} />
+            </div>
+          )}
           {/* 行尾操作 */}
           <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             {onStartPomodoro && !isDone && !isSuspended && (

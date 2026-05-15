@@ -57,3 +57,57 @@
     @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
   }
 }
+
+/* ────────────────────────────────────────────────────────────
+ * TipTap (RichDescription) 视觉
+ *   - 仅在 .tiptap 范围内生效，避免污染外部 markdown 渲染（暂未使用）
+ *   - 子任务（GFM task list）：让 checkbox 与文本基线对齐，并提供
+ *     完成态的视觉（半透明 + 删除线）
+ * ──────────────────────────────────────────────────────────── */
+.tiptap p {
+  @apply my-1;
+}
+.tiptap ul,
+.tiptap ol {
+  @apply my-1 pl-5;
+}
+.tiptap ul li {
+  list-style: disc;
+}
+.tiptap ol li {
+  list-style: decimal;
+}
+
+/* TaskList: 去掉默认列表标记，自带 checkbox */
+.tiptap ul[data-type="taskList"] {
+  @apply list-none pl-0;
+}
+.tiptap ul[data-type="taskList"] li {
+  @apply flex items-start gap-2;
+  list-style: none;
+}
+.tiptap ul[data-type="taskList"] li > label {
+  @apply mt-[3px] flex-shrink-0 cursor-pointer;
+}
+.tiptap ul[data-type="taskList"] li > label > input[type="checkbox"] {
+  @apply h-3.5 w-3.5 cursor-pointer rounded border-ink-300 accent-brand-600;
+}
+.tiptap ul[data-type="taskList"] li > div {
+  @apply flex-1;
+}
+.tiptap ul[data-type="taskList"] li > div > p {
+  @apply my-0;
+}
+/* 已完成的子任务 */
+.tiptap ul[data-type="taskList"] li[data-checked="true"] > div {
+  @apply text-ink-400 line-through;
+}
+
+/* 空编辑器 placeholder（@tiptap/extension-placeholder 在空节点上挂 data-placeholder）*/
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: rgb(148 163 184); /* ink-400 */
+  float: left;
+  pointer-events: none;
+  height: 0;
+}
