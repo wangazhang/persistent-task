@@ -154,7 +154,7 @@ export function TaskEditor({
               if (!p) return null;
               return (
                 <span className="flex items-center gap-1.5 text-[11px] text-ink-500">
-                  <ProgressRing percent={p.percent} size={22} stroke={2.5} />
+                  <ProgressRing percent={p.percent} size={28} stroke={3} />
                   {p.done}/{p.total}
                 </span>
               );
