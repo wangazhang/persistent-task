@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   addMonths,
   eachDayOfInterval,
@@ -142,6 +142,8 @@ export function MonthView({
     | { start: string; end: string; truncated: boolean; x: number; y: number }
   >(null);
   const addTask = useTaskStore((s) => s.addTask);
+  const updateTask = useTaskStore((s) => s.updateTask);
+  const monthGridRef = useRef<HTMLDivElement>(null);
 
   // 拖出 weekRow 后才松开鼠标的话，本地 onMouseUp 不会触发；
   // 这里挂一个 window 级 mouseup 兜底清状态，避免格子持续高亮。
@@ -153,6 +155,34 @@ export function MonthView({
     window.addEventListener("mouseup", clear);
     return () => window.removeEventListener("mouseup", clear);
   }, [dragSel]);
+
+  function handleBarResize(taskId: string, edge: "start" | "end", clientX: number) {
+    const grid = monthGridRef.current;
+    if (!grid) return;
+    const rect = grid.getBoundingClientRect();
+    const probeY = rect.top + rect.height / 2;
+    const cell = document
+      .elementFromPoint(clientX, probeY)
+      ?.closest("[data-cell-iso]") as HTMLElement | null;
+    if (!cell?.dataset.cellIso) return;
+    const targetISO = cell.dataset.cellIso;
+    const t = taskById.get(taskId);
+    if (!t || t.scheduledDates.length === 0) return;
+    const sorted = [...t.scheduledDates].sort();
+    const start = sorted[0];
+    const end = sorted[sorted.length - 1];
+    const newStart = edge === "start" ? (targetISO > end ? end : targetISO) : start;
+    const newEnd = edge === "end" ? (targetISO < start ? start : targetISO) : end;
+    const arr: string[] = [];
+    for (
+      let cur = new Date(newStart);
+      cur <= new Date(newEnd);
+      cur.setDate(cur.getDate() + 1)
+    ) {
+      arr.push(format(cur, "yyyy-MM-dd"));
+    }
+    updateTask(taskId, { scheduledDates: arr });
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -210,7 +240,7 @@ export function MonthView({
         ))}
       </div>
       <PointerEventsGuard>
-      <div className="flex flex-col gap-1.5">
+        <div ref={monthGridRef} className="flex flex-col gap-1.5">
         {Array.from({ length: 6 }, (_, weekRow) => {
           const weekDays = days.slice(weekRow * 7, weekRow * 7 + 7);
           const bars = weekBars[weekRow];
@@ -275,6 +305,7 @@ export function MonthView({
                       task={task}
                       onClick={() => onDateChange(task.scheduledDates[0])}
                       onEdit={onEdit}
+                      onResize={handleBarResize}
                     />
                   );
                 })}
@@ -310,7 +341,7 @@ export function MonthView({
             </div>
           );
         })}
-      </div>
+        </div>
       </PointerEventsGuard>
 
       <DaySection
