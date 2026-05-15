@@ -44,6 +44,7 @@ import {
 } from "./_helpers";
 import { TaskBar } from "./_TaskBar";
 import { useWeekBars } from "./_monthBars";
+import { DayTasksPopover } from "./_DayTasksPopover";
 
 /**
  * Month View：
@@ -141,6 +142,10 @@ export function MonthView({
     | null
     | { start: string; end: string; truncated: boolean; x: number; y: number }
   >(null);
+  const [popover, setPopover] = useState<
+    | null
+    | { iso: string; rect: DOMRect }
+  >(null);
   const addTask = useTaskStore((s) => s.addTask);
   const updateTask = useTaskStore((s) => s.updateTask);
 
@@ -202,6 +207,7 @@ export function MonthView({
     const o = e.over?.data.current;
     if (isDragTask(a) && isDropDay(o)) {
       moveSchedule(a.taskId, a.fromDate, o.iso, mode);
+      setPopover(null);
     }
   }
 
@@ -310,6 +316,7 @@ export function MonthView({
                     info={dayMap.get(dayISO)}
                     maxScale={maxInMonth}
                     onPick={onDateChange}
+                    onOpenPopover={(iso, rect) => setPopover({ iso, rect })}
                     coveredTaskIds={bars.coveredTaskIds}
                     dragHighlight={inDrag}
                   />
@@ -409,6 +416,20 @@ export function MonthView({
           onCancel={() => setBubble(null)}
         />
       )}
+      {popover && (
+        <DayTasksPopover
+          iso={popover.iso}
+          tasks={dayMap.get(popover.iso)?.tasks ?? []}
+          anchor={popover.rect}
+          onClose={() => setPopover(null)}
+          onEdit={(t) => {
+            setPopover(null);
+            onEdit(t);
+          }}
+          onStartPomodoro={startPomodoroFor}
+          onNewTask={onNewTaskOnDate}
+        />
+      )}
     </DndContext>
   );
 }
@@ -471,6 +492,7 @@ function DroppableDayCell({
   info,
   maxScale,
   onPick,
+  onOpenPopover,
   coveredTaskIds,
   dragHighlight,
 }: {
@@ -480,6 +502,7 @@ function DroppableDayCell({
   info: DayInfo | undefined;
   maxScale: number;
   onPick: (iso: string) => void;
+  onOpenPopover?: (iso: string, rect: DOMRect) => void;
   coveredTaskIds: Set<string>;
   dragHighlight?: boolean;
 }) {
@@ -517,8 +540,16 @@ function DroppableDayCell({
       <button
         type="button"
         onClick={() => onPick(iso)}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          const parent = e.currentTarget.parentElement as HTMLElement | null;
+          if (parent && onOpenPopover) {
+            onOpenPopover(iso, parent.getBoundingClientRect());
+          }
+        }}
         className="absolute inset-0 z-0 cursor-pointer rounded-lg"
         aria-label={`选中 ${iso}`}
+        title={`选中 ${iso}（双击查看任务）`}
       />
       <div className="relative z-10 pointer-events-none">
         <div className="flex items-center justify-between">
