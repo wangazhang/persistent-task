@@ -14,6 +14,7 @@ use std::path::PathBuf;
 
 pub struct AppState {
     pub conn: Mutex<Connection>,
+    pub db_path: PathBuf,
 }
 
 impl AppState {
@@ -27,11 +28,12 @@ impl AppState {
         Self::migrate(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
+            db_path,
         })
     }
 
     /// 创建表与索引（幂等），并补齐后加的列
-    fn migrate(conn: &Connection) -> Result<()> {
+    pub(crate) fn migrate(conn: &Connection) -> Result<()> {
         conn.execute_batch(
             r#"
             PRAGMA foreign_keys = ON;

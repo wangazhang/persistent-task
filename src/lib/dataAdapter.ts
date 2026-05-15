@@ -36,6 +36,11 @@ export interface DataAdapter {
 
   /** 清空全部用户数据 */
   clearAll(): Promise<void>;
+
+  /** 导出整库为 SQLite 字节流（备份） */
+  exportDb(): Promise<Uint8Array>;
+  /** 用传入字节流覆盖整库；返回后调用方应 location.reload() 让前端 re-hydrate */
+  replaceDb(bytes: Uint8Array): Promise<void>;
 }
 
 /**
@@ -97,6 +102,17 @@ class TauriAdapter implements DataAdapter {
 
   clearAll() {
     return this.invoke<void>("clear_all");
+  }
+
+  async exportDb() {
+    // Tauri 命令通过 IPC 把 Vec<u8> 序列化为 number[] 返回。
+    // 个人任务数据量不大（典型 < 10MB），JSON 编码可接受。
+    const arr = await this.invoke<number[]>("export_db");
+    return new Uint8Array(arr);
+  }
+  replaceDb(bytes: Uint8Array) {
+    // Uint8Array → number[] 走 JSON 走 IPC。同上，量级可接受。
+    return this.invoke<void>("replace_db", { bytes: Array.from(bytes) });
   }
 }
 

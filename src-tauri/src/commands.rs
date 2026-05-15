@@ -344,3 +344,85 @@ pub fn clear_all(state: State<AppState>) -> Result<(), String> {
     tx.commit().map_err(to_err)?;
     Ok(())
 }
+
+// ────────────────────────────────────────────────────────────────
+// Backup / Restore
+// ────────────────────────────────────────────────────────────────
+
+/// 导出当前数据库为 SQLite 文件字节。
+///
+/// 实现：持锁后直接读取磁盘文件。默认 rollback journal 模式下，
+/// 文件本身就是完整数据库（无独立 WAL），无需 VACUUM INTO。
+#[tauri::command]
+pub fn export_db(state: State<AppState>) -> Result<Vec<u8>, String> {
+    let _guard = state.conn.lock();
+    std::fs::read(&state.db_path).map_err(to_err)
+}
+
+/// 用传入的 SQLite 字节替换当前数据库。
+///
+/// 流程：
+///   1. 写入临时文件 `<db_path>.import.tmp`
+///   2. 用 rusqlite 打开临时文件并跑一次 migrate 校验结构
+///   3. 关闭旧连接（替换为内存占位）
+///   4. 原子 rename 替换主文件
+///   5. 重新打开 + migrate，写回 AppState
+///
+/// 任意一步失败都会清理临时文件，且不动主文件。
+#[tauri::command]
+pub fn replace_db(state: State<AppState>, bytes: Vec<u8>) -> Result<(), String> {
+    use rusqlite::Connection;
+
+    let mut tmp_path = state.db_path.clone();
+    let mut name = tmp_path
+        .file_name()
+        .map(|s| s.to_os_string())
+        .unwrap_or_else(|| "db".into());
+    name.push(".import.tmp");
+    tmp_path.set_file_name(&name);
+
+    // 1. 写临时文件
+    std::fs::write(&tmp_path, &bytes).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        format!("写入临时文件失败：{}", e)
+    })?;
+
+    // 2. 校验：打开临时文件、跑 migrate（migrate 是幂等的 CREATE IF NOT EXISTS）
+    let validate_result = (|| -> Result<(), String> {
+        let tmp_conn = Connection::open(&tmp_path)
+            .map_err(|e| format!("打开临时数据库失败：{}", e))?;
+        crate::db::AppState::migrate(&tmp_conn)
+            .map_err(|e| format!("校验数据库结构失败：{}", e))?;
+        // tmp_conn 在此处 drop，释放文件
+        Ok(())
+    })();
+    if let Err(e) = validate_result {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(e);
+    }
+
+    // 3. 锁主连接，关闭后替换文件
+    let mut guard = state.conn.lock();
+    let placeholder = Connection::open_in_memory()
+        .map_err(|e| format!("创建占位连接失败：{}", e))?;
+    let old = std::mem::replace(&mut *guard, placeholder);
+    drop(old);
+
+    if let Err(e) = std::fs::rename(&tmp_path, &state.db_path) {
+        // 替换失败，重新打开旧文件让 AppState 仍可用
+        let recovered = Connection::open(&state.db_path)
+            .map_err(|e2| format!("替换失败且无法恢复旧库：{} / {}", e, e2))?;
+        *guard = recovered;
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(format!("替换数据库文件失败：{}", e));
+    }
+
+    // 4. 重新打开 + migrate，写回 state
+    let new_conn = Connection::open(&state.db_path)
+        .map_err(|e| format!("重新打开数据库失败：{}", e))?;
+    crate::db::AppState::migrate(&new_conn)
+        .map_err(|e| format!("迁移新数据库失败：{}", e))?;
+    *guard = new_conn;
+
+    Ok(())
+}
