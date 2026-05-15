@@ -47,6 +47,7 @@ interface TaskStoreState {
 
   // pomodoros
   addPomodoro: (s: Omit<PomodoroSession, "id">) => PomodoroSession;
+  removePomodoro: (id: string) => void;
 }
 
 /**
@@ -61,6 +62,9 @@ function persistDeleteTask(id: string) {
 }
 function persistPomo(p: PomodoroSession) {
   void getAdapter().insertPomodoro(p);
+}
+function persistDeletePomo(id: string) {
+  void getAdapter().deletePomodoro(id);
 }
 
 export const useTaskStore = create<TaskStoreState>((set, get) => ({
@@ -219,5 +223,10 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
     set((s) => ({ pomodoros: [...s.pomodoros, session] }));
     persistPomo(session);
     return session;
+  },
+
+  removePomodoro(id) {
+    set((s) => ({ pomodoros: s.pomodoros.filter((p) => p.id !== id) }));
+    persistDeletePomo(id);
   },
 }));

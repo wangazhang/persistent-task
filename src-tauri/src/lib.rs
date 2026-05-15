@@ -42,6 +42,7 @@ pub fn run() {
             commands::delete_tag,
             commands::list_pomodoros,
             commands::insert_pomodoro,
+            commands::delete_pomodoro,
             commands::clear_all,
         ])
         .run(tauri::generate_context!())
