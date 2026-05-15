@@ -143,6 +143,17 @@ export function MonthView({
   >(null);
   const addTask = useTaskStore((s) => s.addTask);
 
+  // 拖出 weekRow 后才松开鼠标的话，本地 onMouseUp 不会触发；
+  // 这里挂一个 window 级 mouseup 兜底清状态，避免格子持续高亮。
+  useEffect(() => {
+    if (!dragSel) return;
+    function clear() {
+      setTimeout(() => setDragSel((cur) => (cur ? null : cur)), 0);
+    }
+    window.addEventListener("mouseup", clear);
+    return () => window.removeEventListener("mouseup", clear);
+  }, [dragSel]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor)
@@ -228,6 +239,11 @@ export function MonthView({
               }}
               onMouseUp={(e) => {
                 if (!dragSel) return;
+                // 单击单格（未发生横拖）不弹气泡，留给 DayCell 自己的 onClick 选日。
+                if (dragSel.startISO === dragSel.currentISO) {
+                  setDragSel(null);
+                  return;
+                }
                 const r = rangeFromDrag(
                   dragSel.startISO,
                   dragSel.currentISO,
