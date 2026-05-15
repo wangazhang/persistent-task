@@ -1,15 +1,38 @@
+import { Trash2 } from "lucide-react";
 import { useTagStore } from "@/store/tagStore";
 import { useTaskStore } from "@/store/taskStore";
+import { confirm as dialogConfirm } from "@/store/dialogStore";
 import type { Tag } from "@/lib/types";
 import { DataTable, type Column } from "../DataTable";
 
 export function TagsTable() {
   const tags = useTagStore((s) => s.tags);
   const tagMap = useTagStore((s) => s.byId());
+  const deleteTagCascade = useTagStore((s) => s.deleteTagCascade);
   const tasks = useTaskStore((s) => s.tasks);
+  const updateTask = useTaskStore((s) => s.updateTask);
 
   function countOf(tagId: string): number {
     return tasks.filter((t) => t.tagIds.includes(tagId)).length;
+  }
+
+  async function handleDelete(t: Tag) {
+    const ok = await dialogConfirm({
+      title: "删除标签",
+      message: `删除标签「${t.name}」及其所有子标签吗？\n关联此标签的任务会自动解除该标签。`,
+      confirmText: "删除",
+      danger: true,
+    });
+    if (!ok) return;
+    const removed = deleteTagCascade(t.id);
+    const removedSet = new Set(removed);
+    for (const task of tasks) {
+      if (task.tagIds.some((id) => removedSet.has(id))) {
+        updateTask(task.id, {
+          tagIds: task.tagIds.filter((id) => !removedSet.has(id)),
+        });
+      }
+    }
   }
 
   const columns: Column<Tag>[] = [
@@ -50,6 +73,24 @@ export function TagsTable() {
       label: "使用次数",
       sortValue: (t) => countOf(t.id),
       render: (t) => countOf(t.id),
+    },
+    {
+      key: "actions",
+      label: "操作",
+      render: (t) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            void handleDelete(t);
+          }}
+          title="删除标签（含子标签）"
+          aria-label="删除标签"
+          className="inline-flex items-center justify-center rounded p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ),
     },
   ];
 

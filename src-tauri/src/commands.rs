@@ -317,6 +317,14 @@ pub fn insert_pomodoro(
     Ok(())
 }
 
+#[tauri::command]
+pub fn delete_pomodoro(state: State<AppState>, id: String) -> Result<(), String> {
+    let conn = state.conn.lock();
+    conn.execute("DELETE FROM pomodoros WHERE id = ?1", params![id])
+        .map_err(to_err)?;
+    Ok(())
+}
+
 // ────────────────────────────────────────────────────────────────
 // Maintenance
 // ────────────────────────────────────────────────────────────────

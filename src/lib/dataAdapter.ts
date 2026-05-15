@@ -32,6 +32,7 @@ export interface DataAdapter {
   // pomodoros
   listPomodoros(): Promise<PomodoroSession[]>;
   insertPomodoro(s: PomodoroSession): Promise<void>;
+  deletePomodoro(id: string): Promise<void>;
 
   /** 清空全部用户数据 */
   clearAll(): Promise<void>;
@@ -89,6 +90,9 @@ class TauriAdapter implements DataAdapter {
   }
   insertPomodoro(pomodoro: PomodoroSession) {
     return this.invoke<void>("insert_pomodoro", { pomodoro });
+  }
+  deletePomodoro(id: string) {
+    return this.invoke<void>("delete_pomodoro", { id });
   }
 
   clearAll() {

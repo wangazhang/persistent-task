@@ -1,7 +1,8 @@
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Trash2 } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useTaskStore } from "@/store/taskStore";
 import { useTagStore } from "@/store/tagStore";
+import { confirm as dialogConfirm } from "@/store/dialogStore";
 import type { Task, TaskPriority } from "@/lib/types";
 import { DataTable, type Column } from "../DataTable";
 
@@ -29,6 +30,7 @@ function fmtDates(dates: string[]): string {
 
 export function TasksTable({ onOpenTask }: { onOpenTask: (t: Task) => void }) {
   const tasks = useTaskStore((s) => s.tasks);
+  const deleteTask = useTaskStore((s) => s.deleteTask);
   const tagMap = useTagStore((s) => s.byId());
 
   function tagsText(t: Task): string {
@@ -36,6 +38,17 @@ export function TasksTable({ onOpenTask }: { onOpenTask: (t: Task) => void }) {
     return t.tagIds
       .map((id) => tagMap.get(id)?.name ?? id)
       .join(", ");
+  }
+
+  async function handleDelete(t: Task) {
+    const ok = await dialogConfirm({
+      title: "删除任务",
+      message: `删除任务「${t.title}」吗？\n关联的番茄记录会保留但解除关联。`,
+      confirmText: "删除",
+      danger: true,
+    });
+    if (!ok) return;
+    deleteTask(t.id);
   }
 
   const columns: Column<Task>[] = [
@@ -113,6 +126,24 @@ export function TasksTable({ onOpenTask }: { onOpenTask: (t: Task) => void }) {
       label: "更新",
       sortValue: (t) => t.updatedAt,
       render: (t) => fmtDateTime(t.updatedAt),
+    },
+    {
+      key: "actions",
+      label: "操作",
+      render: (t) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            void handleDelete(t);
+          }}
+          title="删除任务"
+          aria-label="删除任务"
+          className="inline-flex items-center justify-center rounded p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ),
     },
   ];
 

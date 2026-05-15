@@ -213,6 +213,10 @@ export class SqliteAdapter implements DataAdapter {
     );
   }
 
+  async deletePomodoro(id: string): Promise<void> {
+    run(`DELETE FROM pomodoros WHERE id = ?`, [id]);
+  }
+
   /* ──────────────── Maintenance ──────────────── */
 
   async clearAll(): Promise<void> {

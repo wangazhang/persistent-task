@@ -1,5 +1,6 @@
-import { Check, X } from "lucide-react";
+import { Check, Trash2, X } from "lucide-react";
 import { useTaskStore } from "@/store/taskStore";
+import { confirm as dialogConfirm } from "@/store/dialogStore";
 import type { PomodoroSession, PomodoroType } from "@/lib/types";
 import { fmtDuration } from "@/lib/utils";
 import { DataTable, type Column } from "../DataTable";
@@ -23,6 +24,7 @@ function fmtDateTime(iso: string): string {
 export function PomodorosTable() {
   const sessions = useTaskStore((s) => s.pomodoros);
   const tasks = useTaskStore((s) => s.tasks);
+  const removePomodoro = useTaskStore((s) => s.removePomodoro);
 
   const taskTitleById = new Map<string, string>();
   for (const t of tasks) taskTitleById.set(t.id, t.title);
@@ -30,6 +32,19 @@ export function PomodorosTable() {
   function taskTitle(s: PomodoroSession): string {
     if (!s.taskId) return "";
     return taskTitleById.get(s.taskId) ?? s.taskId;
+  }
+
+  async function handleDelete(s: PomodoroSession) {
+    const title = taskTitle(s);
+    const subject = title ? `「${title}」的番茄记录` : "该番茄记录";
+    const ok = await dialogConfirm({
+      title: "删除番茄记录",
+      message: `删除${subject}吗？此操作不可撤销。`,
+      confirmText: "删除",
+      danger: true,
+    });
+    if (!ok) return;
+    removePomodoro(s.id);
   }
 
   const columns: Column<PomodoroSession>[] = [
@@ -81,6 +96,24 @@ export function PomodorosTable() {
           </span>
         );
       },
+    },
+    {
+      key: "actions",
+      label: "操作",
+      render: (s) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            void handleDelete(s);
+          }}
+          title="删除番茄记录"
+          aria-label="删除番茄记录"
+          className="inline-flex items-center justify-center rounded p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ),
     },
   ];
 
