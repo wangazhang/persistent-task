@@ -36,6 +36,7 @@ import {
   useTagFilterSet,
 } from "./_helpers";
 import { DraggableTaskCard } from "./_DraggableTaskCard";
+import { DayTasksPopover } from "./_DayTasksPopover";
 
 /**
  * Week View（纵向 7 行 + 行内任务也纵向堆叠）。
@@ -143,6 +144,10 @@ export function WeekView({
   // ---- 拖拽状态 ----
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [mode, setMode] = useState<"move" | "add" | "replace">("move");
+  const [popover, setPopover] = useState<
+    | null
+    | { iso: string; rect: DOMRect }
+  >(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -162,6 +167,7 @@ export function WeekView({
     const o = e.over?.data.current;
     if (isDragTask(a) && isDropDay(o)) {
       moveSchedule(a.taskId, a.fromDate, o.iso, mode);
+      setPopover(null);
     }
   }
 
@@ -271,6 +277,7 @@ export function WeekView({
                 })
               }
               onStartPomodoro={startPomodoroFor}
+              onOpenPopover={(iso, rect) => setPopover({ iso, rect })}
             />
           );
         })}
@@ -295,6 +302,21 @@ export function WeekView({
           </div>
         ) : null}
       </DragOverlay>
+
+      {popover && (
+        <DayTasksPopover
+          iso={popover.iso}
+          tasks={(buckets.get(popover.iso)?.all) ?? []}
+          anchor={popover.rect}
+          onClose={() => setPopover(null)}
+          onEdit={(t) => {
+            setPopover(null);
+            onEdit(t);
+          }}
+          onStartPomodoro={startPomodoroFor}
+          onNewTask={onNewTaskOnDate}
+        />
+      )}
     </DndContext>
   );
 }
@@ -318,6 +340,7 @@ function WeekRow({
   onNewTask,
   onQuickAdd,
   onStartPomodoro,
+  onOpenPopover,
 }: {
   day: Date;
   iso: string;
@@ -328,6 +351,7 @@ function WeekRow({
   onNewTask: () => void;
   onQuickAdd: (title: string, priority: TaskPriority) => void;
   onStartPomodoro: (t: Task) => void;
+  onOpenPopover: (iso: string, rect: DOMRect) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `daycell:${iso}`,
@@ -378,11 +402,15 @@ function WeekRow({
       <button
         type="button"
         onClick={onSelect}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onOpenPopover(iso, e.currentTarget.getBoundingClientRect());
+        }}
         className={cn(
           "flex w-20 shrink-0 flex-col items-start self-start rounded-md px-2 py-1 text-left transition-colors hover:bg-ink-50",
           today && "bg-brand-50/70"
         )}
-        title={`选中 ${iso}`}
+        title={`选中 ${iso}（双击查看任务）`}
       >
         <div className="flex items-baseline gap-1.5">
           <span
