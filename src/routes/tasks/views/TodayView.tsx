@@ -22,6 +22,7 @@ import { Plus, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { TaskCard } from "@/components/task/TaskCard";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
+import { ListColumnsToggle } from "@/components/ui/ListColumnsToggle";
 import { PriorityPicker } from "@/components/ui/PriorityPicker";
 import type { Task, TaskPriority } from "@/lib/types";
 import { isoDate } from "@/lib/utils";
@@ -200,6 +201,7 @@ export function TodayView({ onEdit, onCreate, tags }: Props) {
         <button className="btn-ghost text-xs" onClick={onCreate}>
           详细…
         </button>
+        <ListColumnsToggle />
       </div>
 
       {todayTasks.length === 0 ? (

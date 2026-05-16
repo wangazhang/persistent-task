@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { Columns2, Plus, Rows3, Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { SearchModal } from "@/components/search/SearchModal";
 import { TaskEditor } from "@/components/task/TaskEditor";
 import type { Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { useListColumns } from "@/lib/listColumns";
 import { TaskFilters } from "./TaskFilters";
 import { useTaskUrlState, type ViewMode } from "./useTaskUrlState";
 import { TodayView } from "./views/TodayView";
@@ -43,7 +42,6 @@ export function TasksHub() {
     undefined
   );
   const [searchOpen, setSearchOpen] = useState(false);
-  const [columns, setColumns] = useListColumns();
 
   function openCreate(defaultDate?: string) {
     setEditing(null);
@@ -114,41 +112,6 @@ export function TasksHub() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* 单栏 / 双栏切换：影响所有任务列表的 grid 列数，偏好持久化到 localStorage */}
-          <div
-            className="inline-flex overflow-hidden rounded-lg border border-ink-200"
-            role="group"
-            aria-label="列表显示密度"
-          >
-            <button
-              type="button"
-              onClick={() => setColumns(1)}
-              className={cn(
-                "px-2 py-1.5 text-xs transition-colors",
-                columns === 1
-                  ? "bg-brand-600 text-white"
-                  : "bg-white text-ink-500 hover:bg-ink-50"
-              )}
-              title="单栏显示"
-              aria-pressed={columns === 1}
-            >
-              <Rows3 className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setColumns(2)}
-              className={cn(
-                "px-2 py-1.5 text-xs transition-colors",
-                columns === 2
-                  ? "bg-brand-600 text-white"
-                  : "bg-white text-ink-500 hover:bg-ink-50"
-              )}
-              title="双栏显示"
-              aria-pressed={columns === 2}
-            >
-              <Columns2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
           {/* 搜索：所有 view 都可见，全局 Cmd/Ctrl+K 也能触发 */}
           <button
             type="button"

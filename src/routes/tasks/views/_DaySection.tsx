@@ -4,6 +4,7 @@ import { zhCN } from "date-fns/locale";
 import { Plus } from "lucide-react";
 import { TaskCard } from "@/components/task/TaskCard";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
+import { ListColumnsToggle } from "@/components/ui/ListColumnsToggle";
 import type { Task } from "@/lib/types";
 import { listColumnsClass, useListColumns } from "@/lib/listColumns";
 import type { DayInfo } from "./_helpers";
@@ -67,10 +68,13 @@ export function DaySection({
                 }`}
           </span>
         </h3>
-        <button type="button" className="btn-secondary text-xs" onClick={onNewTask}>
-          <Plus className="h-3.5 w-3.5" />
-          在这一天新建任务
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" className="btn-secondary text-xs" onClick={onNewTask}>
+            <Plus className="h-3.5 w-3.5" />
+            在这一天新建任务
+          </button>
+          <ListColumnsToggle />
+        </div>
       </div>
 
       {allTasks.length === 0 ? (
