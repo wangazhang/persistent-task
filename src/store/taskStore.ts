@@ -6,6 +6,8 @@ import type {
   TaskStatus,
 } from "@/lib/types";
 import { isoDate, uid } from "@/lib/utils";
+import { withTracking, type ActionMapping } from "@/lib/analytics/middleware";
+import type { TaskPriority } from "@/lib/types";
 
 interface TaskStoreState {
   tasks: Task[];
@@ -67,7 +69,89 @@ function persistDeletePomo(id: string) {
   void getAdapter().deletePomodoro(id);
 }
 
-export const useTaskStore = create<TaskStoreState>((set, get) => ({
+const taskTrackingMapping: ActionMapping<TaskStoreState> = {
+  addTask: (ret) => {
+    const t = ret as { id: string; priority: TaskPriority; tagIds: string[]; description?: string };
+    return [
+      ["task.created", {
+        taskId: t.id,
+        priority: t.priority,
+        tagIds: t.tagIds ?? [],
+        hasDoc: !!(t as any).docUrl,
+      }],
+    ];
+  },
+
+  toggleStatus: (_ret, args) => {
+    const [id, status] = args as [string, "todo" | "in_progress" | "suspended" | "done" | "archived" | undefined];
+    if (status === "done") return [["task.completed", { taskId: id }]];
+    if (status === "todo" || status === "in_progress") return [["task.uncompleted", { taskId: id }]];
+    // 没传 status 时,store 内部会切换;靠 prev/next 推断
+    return [];
+  },
+
+  deleteTask: (_ret, args) => {
+    const [id] = args as [string];
+    return [["task.deleted", { taskId: id }]];
+  },
+
+  moveSchedule: (_ret, args) => {
+    const [id, from, to, mode] = args as [string, string, string, "move" | "add" | "replace" | undefined];
+    return [["task.rescheduled", { taskId: id, fromDate: from, toDate: to, mode: mode ?? "move" }]];
+  },
+
+  scheduleForDate: (_ret, args) => {
+    const [id, date] = args as [string, string];
+    return [["task.scheduled", { taskId: id, date }]];
+  },
+
+  removeFromDate: (_ret, args) => {
+    const [id, date] = args as [string, string];
+    return [["task.unscheduled", { taskId: id, date }]];
+  },
+
+  reorderForDate: (_ret, args) => {
+    const [date, ids] = args as [string, string[]];
+    return [["task.reordered", { date, count: ids.length }]];
+  },
+
+  updateTask: (_ret, args, { prev, next }) => {
+    const [id, patch] = args as [string, Partial<{ priority: TaskPriority; tagIds: string[] }>];
+    const prevTask = prev.tasks.find((t) => t.id === id);
+    const nextTask = next.tasks.find((t) => t.id === id);
+    const out: Array<[any, any]> = [];
+    if (prevTask && nextTask) {
+      if (patch.priority && prevTask.priority !== nextTask.priority) {
+        out.push(["task.priority_changed", {
+          taskId: id, from: prevTask.priority, to: nextTask.priority,
+        }]);
+      }
+      if (patch.tagIds) {
+        const prevTags = prevTask.tagIds ?? [];
+        const nextTags = nextTask.tagIds ?? [];
+        for (const t of nextTags) if (!prevTags.includes(t)) out.push(["task.tagged", { taskId: id, tagId: t }]);
+        for (const t of prevTags) if (!nextTags.includes(t)) out.push(["task.untagged", { taskId: id, tagId: t }]);
+      }
+    }
+    out.push(["task.updated", { taskId: id, fields: Object.keys(patch ?? {}) }]);
+    return out;
+  },
+
+  addPomodoro: (ret) => {
+    const p = ret as { taskId?: string; type: "focus" | "short_break" | "long_break"; durationSec: number; completed: boolean };
+    return [
+      [
+        p.completed ? "pomodoro.completed" : "pomodoro.cancelled",
+        p.completed
+          ? { taskId: p.taskId, type: p.type, durationSec: p.durationSec }
+          : { taskId: p.taskId, type: p.type, elapsedSec: p.durationSec },
+      ],
+    ];
+  },
+};
+
+export const useTaskStore = create<TaskStoreState>()(
+  withTracking(taskTrackingMapping)((set, get) => ({
   tasks: [],
   pomodoros: [],
   hydrated: false,
@@ -229,4 +313,4 @@ export const useTaskStore = create<TaskStoreState>((set, get) => ({
     set((s) => ({ pomodoros: s.pomodoros.filter((p) => p.id !== id) }));
     persistDeletePomo(id);
   },
-}));
+})));
