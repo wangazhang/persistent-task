@@ -90,6 +90,22 @@ impl AppState {
             );
             CREATE INDEX IF NOT EXISTS idx_pomodoros_started ON pomodoros(started_at);
             CREATE INDEX IF NOT EXISTS idx_pomodoros_task    ON pomodoros(task_id);
+
+            -- 事件埋点（与 src/lib/webDb/schema.ts 保持同步）
+            CREATE TABLE IF NOT EXISTS events (
+                id           TEXT PRIMARY KEY,
+                type         TEXT NOT NULL,
+                occurred_at  TEXT NOT NULL,
+                entity_type  TEXT,
+                entity_id    TEXT,
+                session_id   TEXT NOT NULL,
+                source       TEXT NOT NULL,
+                props        TEXT NOT NULL DEFAULT '{}'
+            );
+            CREATE INDEX IF NOT EXISTS idx_events_type      ON events(type);
+            CREATE INDEX IF NOT EXISTS idx_events_occurred  ON events(occurred_at);
+            CREATE INDEX IF NOT EXISTS idx_events_entity    ON events(entity_type, entity_id);
+            CREATE INDEX IF NOT EXISTS idx_events_session   ON events(session_id);
             "#,
         )?;
 
