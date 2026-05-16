@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { getAdapter } from "@/lib/dataAdapter";
 import type { Tag, TagNode } from "@/lib/types";
 import { uid } from "@/lib/utils";
+import { withTracking, type ActionMapping } from "@/lib/analytics/middleware";
 
 interface TagStoreState {
   tags: Tag[];
@@ -37,6 +38,27 @@ interface TagStoreState {
   moveTag: (tagId: string, newParentId: string | null, newIndex: number) => boolean;
 }
 
+const tagTrackingMapping: ActionMapping<TagStoreState> = {
+  addTag: (ret) => {
+    const t = ret as Tag;
+    return [["tag.created", { tagId: t.id, parentId: t.parentId ?? null, color: t.color }]];
+  },
+  updateTag: (_ret, args) => {
+    const [id, patch] = args as [string, Partial<Tag>];
+    if (patch.name !== undefined) return [["tag.renamed", { tagId: id }]];
+    return [];
+  },
+  deleteTagCascade: (ret, args) => {
+    const [id] = args as [string];
+    const removed = ret as string[];
+    return [["tag.deleted", { tagId: id, cascadeCount: removed.length }]];
+  },
+  moveTag: (_ret, args) => {
+    const [tagId, newParentId] = args as [string, string | null, number];
+    return [["tag.moved", { tagId, newParentId: newParentId ?? null }]];
+  },
+};
+
 function persistTag(t: Tag) {
   void getAdapter().upsertTag(t);
 }
@@ -44,7 +66,8 @@ function persistDelete(id: string) {
   void getAdapter().deleteTag(id);
 }
 
-export const useTagStore = create<TagStoreState>((set, get) => ({
+export const useTagStore = create<TagStoreState>()(
+  withTracking(tagTrackingMapping)((set, get) => ({
   tags: [],
   hydrated: false,
 
@@ -193,4 +216,4 @@ export const useTagStore = create<TagStoreState>((set, get) => ({
     });
     return true;
   },
-}));
+})));
