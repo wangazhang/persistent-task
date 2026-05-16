@@ -10,23 +10,61 @@ import { DataPage } from "@/routes/data/DataPage";
 import { useTaskStore } from "@/store/taskStore";
 import { useTagStore } from "@/store/tagStore";
 import { usePomodoroStore } from "@/store/pomodoroStore";
+import { usePastReviewStore } from "@/store/pastReviewStore";
+import { isPastUnfinished } from "@/lib/pastReview";
+import { isoDate } from "@/lib/utils";
+
+function checkAndAutoPrompt() {
+  const past = usePastReviewStore.getState();
+  if (!past.shouldAutoPrompt()) return;
+  // 只查一次 store，不订阅
+  const { tasks } = useTaskStore.getState();
+  const today = isoDate();
+  const hasPast = tasks.some((t) => isPastUnfinished(t, today));
+  if (!hasPast) return;
+  past.openDialog();
+  past.markPromptedToday();
+}
 
 export default function App() {
   const hydrateTasks = useTaskStore((s) => s.hydrate);
   const hydrateTags = useTagStore((s) => s.hydrate);
   const tickPomodoro = usePomodoroStore((s) => s.tick);
 
-  // 启动时加载数据
+  // 启动时加载数据，加载完毕后判断是否需要弹"待处理过期任务"
   useEffect(() => {
-    void hydrateTags();
-    void hydrateTasks();
-  }, [hydrateTasks, hydrateTags]);
+    let cancelled = false;
+    (async () => {
+      await Promise.all([hydrateTags(), hydrateTasks()]);
+      if (cancelled) return;
+      checkAndAutoPrompt();
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 全局番茄钟 tick：每秒跳一次（store 内部判断状态）
   useEffect(() => {
     const id = setInterval(() => tickPomodoro(), 1000);
     return () => clearInterval(id);
   }, [tickPomodoro]);
+
+  // 跨日（应用持续打开）也要触发一次：
+  //   - visibilitychange：用户切回应用前台
+  //   - 5 分钟轮询：纯前台情况下也能感知日期变化
+  useEffect(() => {
+    function onVis() {
+      if (document.visibilityState === "visible") checkAndAutoPrompt();
+    }
+    document.addEventListener("visibilitychange", onVis);
+    const timer = window.setInterval(checkAndAutoPrompt, 5 * 60 * 1000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.clearInterval(timer);
+    };
+  }, []);
 
   return (
     <>
