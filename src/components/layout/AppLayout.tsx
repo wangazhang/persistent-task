@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
+import { TopBar } from "./TopBar";
+import { PastTaskReviewDialog } from "@/components/task/PastTaskReviewDialog";
 import { track } from "@/lib/analytics";
 
 export function AppLayout() {
@@ -14,9 +16,13 @@ export function AppLayout() {
   return (
     <div className="flex h-full w-full">
       <Sidebar />
-      <main className="flex-1 overflow-auto">
-        <Outlet />
-      </main>
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <TopBar />
+        <main className="flex-1 overflow-auto">
+          <Outlet />
+        </main>
+      </div>
+      <PastTaskReviewDialog />
     </div>
   );
 }

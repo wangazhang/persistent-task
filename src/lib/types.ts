@@ -27,6 +27,19 @@ export type TaskStatus =
  */
 export type TaskPriority = "p0" | "p1" | "p2";
 
+/** 次日处理动作 */
+export type TaskReviewAction = "done" | "continue" | "suspend";
+
+/** 单条次日处理日志（追加式） */
+export interface TaskReviewEntry {
+  /** 处理日期 yyyy-MM-dd */
+  date: string;
+  /** 处理动作 */
+  action: TaskReviewAction;
+  /** 用户填写的原因（非必填，"done" 永远不填） */
+  reason?: string;
+}
+
 /** 任务 */
 export interface Task {
   id: string;
@@ -64,6 +77,11 @@ export interface Task {
   /** 完成时间（ISO 字符串）*/
   completedAt?: string;
   createdAt: string;
+  /**
+   * 次日处理日志（追加式）。
+   * 缺失 / undefined 视为空数组。老数据无需 migration。
+   */
+  reviewLog?: TaskReviewEntry[];
   updatedAt: string;
 }
 

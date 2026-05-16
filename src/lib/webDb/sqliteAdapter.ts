@@ -14,6 +14,7 @@ import type {
   Tag,
   Task,
   TaskPriority,
+  TaskReviewEntry,
   TaskStatus,
 } from "../types";
 import type {
@@ -53,6 +54,16 @@ function rowToTag(r: Row): Tag {
   };
 }
 
+function parseReviewLog(v: unknown): TaskReviewEntry[] | undefined {
+  if (v == null) return undefined;
+  try {
+    const parsed = JSON.parse(String(v));
+    return Array.isArray(parsed) ? (parsed as TaskReviewEntry[]) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function rowToPomodoro(r: Row): PomodoroSession {
   return {
     id: s(r.id),
@@ -90,7 +101,8 @@ export class SqliteAdapter implements DataAdapter {
   async listTasks(): Promise<Task[]> {
     const taskRows = query<Row>(
       `SELECT id, title, description, status, priority, "order",
-              doc_url, doc_title, color, completed_at, created_at, updated_at
+              doc_url, doc_title, color, completed_at, created_at, updated_at,
+              review_log
        FROM tasks`
     );
     const tasks: Task[] = taskRows.map((r) => ({
@@ -108,6 +120,7 @@ export class SqliteAdapter implements DataAdapter {
       completedAt: (r.completed_at as string | null) ?? undefined,
       createdAt: s(r.created_at),
       updatedAt: s(r.updated_at),
+      reviewLog: parseReviewLog(r.review_log),
     }));
 
     const dateRows = query<Row>(
@@ -142,8 +155,9 @@ export class SqliteAdapter implements DataAdapter {
       run(
         `INSERT INTO tasks (
             id, title, description, status, priority, "order",
-            doc_url, doc_title, color, completed_at, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            doc_url, doc_title, color, completed_at, created_at, updated_at,
+            review_log
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
             description = excluded.description,
@@ -154,7 +168,8 @@ export class SqliteAdapter implements DataAdapter {
             doc_title = excluded.doc_title,
             color = excluded.color,
             completed_at = excluded.completed_at,
-            updated_at = excluded.updated_at`,
+            updated_at = excluded.updated_at,
+            review_log = excluded.review_log`,
         [
           task.id,
           task.title,
@@ -168,6 +183,9 @@ export class SqliteAdapter implements DataAdapter {
           task.completedAt ?? null,
           task.createdAt,
           task.updatedAt,
+          task.reviewLog && task.reviewLog.length > 0
+            ? JSON.stringify(task.reviewLog)
+            : null,
         ]
       );
 

@@ -3,11 +3,14 @@ import { getAdapter } from "@/lib/dataAdapter";
 import type {
   PomodoroSession,
   Task,
+  TaskReviewAction,
+  TaskReviewEntry,
   TaskStatus,
 } from "@/lib/types";
 import { isoDate, uid } from "@/lib/utils";
 import { withTracking, type ActionMapping } from "@/lib/analytics/middleware";
 import type { TaskPriority } from "@/lib/types";
+import { fillContinueDates } from "@/lib/pastReview";
 
 interface TaskStoreState {
   tasks: Task[];
@@ -45,6 +48,12 @@ interface TaskStoreState {
     fromDate: string,
     toDate: string,
     mode?: "move" | "add" | "replace"
+  ) => void;
+  /** 处理某条过期未完成任务（已完成 / 今天继续 / 挂起），同时追加 reviewLog */
+  reviewPastTask: (
+    id: string,
+    action: TaskReviewAction,
+    reason?: string
   ) => void;
 
   // pomodoros
@@ -300,6 +309,33 @@ export const useTaskStore = create<TaskStoreState>()(
       return;
     }
     get().updateTask(taskId, { scheduledDates: next });
+  },
+
+  reviewPastTask(id, action, reason) {
+    const target = get().tasks.find((t) => t.id === id);
+    if (!target) return;
+    const today = isoDate();
+    const existing = target.reviewLog ?? [];
+    const entry: TaskReviewEntry = reason
+      ? { date: today, action, reason }
+      : { date: today, action };
+    const reviewLog: TaskReviewEntry[] = [...existing, entry];
+
+    if (action === "done") {
+      get().updateTask(id, {
+        status: "done",
+        completedAt: new Date().toISOString(),
+        reviewLog,
+      });
+      return;
+    }
+    if (action === "suspend") {
+      get().updateTask(id, { status: "suspended", reviewLog });
+      return;
+    }
+    // continue：填充 scheduledDates，状态保持 todo / in_progress
+    const next = fillContinueDates(target.scheduledDates, today);
+    get().updateTask(id, { scheduledDates: next, reviewLog });
   },
 
   addPomodoro(input) {

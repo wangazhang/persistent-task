@@ -57,6 +57,10 @@ pub struct Task {
     pub completed_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// 次日处理日志 JSON 字符串。前端会 JSON.parse / JSON.stringify。
+    /// 兼容旧数据：缺失或 null 视作 None。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_log: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
