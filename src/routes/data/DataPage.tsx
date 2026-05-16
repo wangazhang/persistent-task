@@ -8,6 +8,7 @@ import { useDataUrlState, type DataTab } from "./useDataUrlState";
 import { TasksTable } from "./tables/TasksTable";
 import { TagsTable } from "./tables/TagsTable";
 import { PomodorosTable } from "./tables/PomodorosTable";
+import { EventsTable } from "./tables/EventsTable";
 import { ImportExportBar } from "./ImportExportBar";
 
 interface TabDef {
@@ -28,6 +29,7 @@ export function DataPage() {
     { key: "tasks", label: "任务", count: tasks.length },
     { key: "tags", label: "标签", count: tags.length },
     { key: "pomodoros", label: "番茄", count: pomodoros.length },
+    { key: "events", label: "事件", count: 0 },
   ];
 
   return (
@@ -50,7 +52,7 @@ export function DataPage() {
                 : "bg-white text-ink-600 hover:bg-ink-50"
             )}
           >
-            {t.label} ({t.count})
+            {t.key === "events" ? t.label : `${t.label} (${t.count})`}
           </button>
         ))}
       </div>
@@ -58,6 +60,7 @@ export function DataPage() {
       {tab === "tasks" && <TasksTable onOpenTask={(t) => setEditing(t)} />}
       {tab === "tags" && <TagsTable />}
       {tab === "pomodoros" && <PomodorosTable />}
+      {tab === "events" && <EventsTable />}
 
       <TaskEditor
         open={!!editing}
