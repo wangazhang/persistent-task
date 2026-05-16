@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { PomodoroType } from "@/lib/types";
 import { useTaskStore } from "./taskStore";
+import { track } from "@/lib/analytics";
 
 /**
  * 番茄钟运行时状态。
@@ -75,6 +76,10 @@ export const usePomodoroStore = create<PomodoroStoreState>((set, get) => ({
       state: "running",
       elapsedSec: 0,
       startedAt: new Date().toISOString(),
+    });
+    track("pomodoro.started", {
+      taskId: get().taskId,
+      type: get().type,
     });
   },
 
