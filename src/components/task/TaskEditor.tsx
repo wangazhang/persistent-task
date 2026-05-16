@@ -193,17 +193,49 @@ export function TaskEditor({
           <div className="flex flex-wrap gap-1.5">
             {(
               [
-                { v: "todo", l: "待办" },
-                { v: "in_progress", l: "进行中" },
-                { v: "suspended", l: "挂起" },
-                { v: "done", l: "已完成" },
-              ] as { v: TaskStatus; l: string }[]
-            ).map(({ v, l }) => (
+                {
+                  v: "todo",
+                  l: "待办",
+                  selected: "bg-ink-500 text-white border-ink-500",
+                  unselected:
+                    "bg-ink-50 text-ink-600 border-ink-200 hover:bg-ink-100",
+                },
+                {
+                  v: "in_progress",
+                  l: "进行中",
+                  selected: "bg-warning-500 text-white border-warning-500",
+                  unselected:
+                    "bg-warning-50 text-warning-600 border-warning-500/40 hover:bg-warning-50",
+                },
+                {
+                  v: "suspended",
+                  l: "挂起",
+                  selected: "bg-paused-500 text-white border-paused-500",
+                  unselected:
+                    "bg-paused-50 text-paused-600 border-paused-500/40 hover:bg-paused-100",
+                },
+                {
+                  v: "done",
+                  l: "已完成",
+                  selected: "bg-success-500 text-white border-success-500",
+                  unselected:
+                    "bg-success-50 text-success-600 border-success-500/40 hover:bg-success-50",
+                },
+              ] as {
+                v: TaskStatus;
+                l: string;
+                selected: string;
+                unselected: string;
+              }[]
+            ).map(({ v, l, selected, unselected }) => (
               <button
                 key={v}
                 type="button"
                 onClick={() => setStatus(v)}
-                className={status === v ? "btn-primary" : "btn-secondary"}
+                className={cn(
+                  "btn border",
+                  status === v ? `${selected} shadow-sm` : unselected
+                )}
               >
                 {l}
               </button>
