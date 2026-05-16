@@ -94,6 +94,7 @@ export async function initWebDb(): Promise<Database> {
   db.run(SCHEMA_SQL);
   // 对老 DB 补齐后加的列（与 Rust 端 ensure_column 等价）
   ensureColumn(db, "tasks", "color", "TEXT");
+  ensureColumn(db, "tasks", "review_log", "TEXT");
   return db;
 }
 
