@@ -82,16 +82,19 @@ export function EventsTable() {
   };
 
   /**
-   * 点击 group 标签的行为：
-   *   - 当前 group 全部已选 → 全部取消（保留其他 group 的选择）
-   *   - 否则 → 只选这个 group（取消其他 group 的选择）
-   * 这是观察使用习惯后的取舍：用户多数时候要"只看 X 类",而不是"加上 X 类"。
+   * 点击 group 标签的行为（独立切换,不影响其他 group）：
+   *   - 当前 group 全部已选 → 取消该组所有
+   *   - 否则 → 把该组所有加进选择
+   * 多个 group 之间叠加（不是排他）。
    */
   const onGroupClick = (group: keyof typeof TYPE_GROUPS) => {
     setOffset(0);
     const groupTypes = TYPE_GROUPS[group];
     const allSelected = groupTypes.every((t) => types.includes(t));
-    setTypes(allSelected ? [] : [...groupTypes]);
+    setTypes((prev) => {
+      const others = prev.filter((t) => !groupTypes.includes(t));
+      return allSelected ? others : [...others, ...groupTypes];
+    });
   };
 
   const clearTypes = () => {
@@ -155,7 +158,7 @@ export function EventsTable() {
                     "w-16 shrink-0 py-0.5 text-left text-[11px] uppercase",
                     allSelected ? "font-semibold text-brand-700" : "text-ink-400 hover:text-ink-600"
                   )}
-                  title={allSelected ? "取消全选这一组" : "只看这一组"}
+                  title={allSelected ? "取消全选这一组" : "全选这一组"}
                 >
                   {group}
                 </button>
