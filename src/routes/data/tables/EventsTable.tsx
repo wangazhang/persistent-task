@@ -24,7 +24,8 @@ function todayIso(): { from: string; to: string } {
 }
 
 export function EventsTable() {
-  const [types, setTypes] = useState<EventType[]>([]);
+  // 默认只显示任务相关事件;不必每次进来都看 UI 噪声
+  const [types, setTypes] = useState<EventType[]>(() => [...TYPE_GROUPS.task]);
   const [from, setFrom] = useState<string>(todayIso().from);
   const [to, setTo] = useState<string>(todayIso().to);
   const [entityId, setEntityId] = useState<string>("");
@@ -80,6 +81,24 @@ export function EventsTable() {
     );
   };
 
+  /**
+   * 点击 group 标签的行为：
+   *   - 当前 group 全部已选 → 全部取消（保留其他 group 的选择）
+   *   - 否则 → 只选这个 group（取消其他 group 的选择）
+   * 这是观察使用习惯后的取舍：用户多数时候要"只看 X 类",而不是"加上 X 类"。
+   */
+  const onGroupClick = (group: keyof typeof TYPE_GROUPS) => {
+    setOffset(0);
+    const groupTypes = TYPE_GROUPS[group];
+    const allSelected = groupTypes.every((t) => types.includes(t));
+    setTypes(allSelected ? [] : [...groupTypes]);
+  };
+
+  const clearTypes = () => {
+    setOffset(0);
+    setTypes([]);
+  };
+
   const toggleExpand = (id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -125,26 +144,52 @@ export function EventsTable() {
 
         {/* 类型分组多选 */}
         <div className="mt-3 space-y-1">
-          {Object.entries(TYPE_GROUPS).map(([group, ts]) => (
-            <div key={group} className="flex flex-wrap items-center gap-1.5">
-              <span className="w-16 text-[11px] uppercase text-ink-400">{group}</span>
-              {ts.map((t) => (
+          {(Object.entries(TYPE_GROUPS) as [keyof typeof TYPE_GROUPS, EventType[]][]).map(([group, ts]) => {
+            const allSelected = ts.length > 0 && ts.every((t) => types.includes(t));
+            return (
+              <div key={group} className="flex flex-wrap items-center gap-1.5">
                 <button
-                  key={t}
                   type="button"
-                  onClick={() => toggleType(t)}
+                  onClick={() => onGroupClick(group)}
                   className={cn(
-                    "rounded-full border px-2 py-0.5 text-[11px]",
-                    types.includes(t)
-                      ? "border-brand-500 bg-brand-50 text-brand-700"
-                      : "border-ink-200 text-ink-500 hover:bg-ink-50"
+                    "w-16 text-left text-[11px] uppercase",
+                    allSelected ? "font-semibold text-brand-700" : "text-ink-400 hover:text-ink-600"
                   )}
+                  title={allSelected ? "取消全选这一组" : "只看这一组"}
                 >
-                  {t.split(".")[1]}
+                  {group}
                 </button>
-              ))}
-            </div>
-          ))}
+                {ts.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => toggleType(t)}
+                    className={cn(
+                      "rounded-full border px-2 py-0.5 text-[11px]",
+                      types.includes(t)
+                        ? "border-brand-500 bg-brand-50 text-brand-700"
+                        : "border-ink-200 text-ink-500 hover:bg-ink-50"
+                    )}
+                  >
+                    {t.split(".")[1]}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+          <div className="pt-1 text-[11px] text-ink-400">
+            {types.length === 0 ? (
+              <span>未选 = 显示全部事件</span>
+            ) : (
+              <button
+                type="button"
+                onClick={clearTypes}
+                className="text-ink-500 underline-offset-2 hover:underline"
+              >
+                清空筛选(显示全部)
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
