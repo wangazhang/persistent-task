@@ -25,6 +25,7 @@ import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { PriorityPicker } from "@/components/ui/PriorityPicker";
 import type { Task, TaskPriority } from "@/lib/types";
 import { isoDate } from "@/lib/utils";
+import { listColumnsClass, useListColumns } from "@/lib/listColumns";
 import { usePomodoroStore } from "@/store/pomodoroStore";
 import { useTaskStore } from "@/store/taskStore";
 import { taskSorter, useTagFilterSet } from "./_helpers";
@@ -122,6 +123,7 @@ export function TodayView({ onEdit, onCreate, tags }: Props) {
 
   const [quickInput, setQuickInput] = useState("");
   const [quickPriority, setQuickPriority] = useState<TaskPriority>("p2");
+  const [cols] = useListColumns();
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -157,7 +159,7 @@ export function TodayView({ onEdit, onCreate, tags }: Props) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className={cols === 2 ? "mx-auto max-w-5xl" : "mx-auto max-w-3xl"}>
       {/* 今日大日期 banner —— Today view 独有的"仪式感" */}
       <header className="mb-6">
         <div className="mb-1 text-xs uppercase tracking-wider text-ink-400">
@@ -215,7 +217,7 @@ export function TodayView({ onEdit, onCreate, tags }: Props) {
             items={todayTasks.map((t) => t.id)}
             strategy={verticalListSortingStrategy}
           >
-            <div className="space-y-2">
+            <div className={listColumnsClass(cols)}>
               {todayTasks.map((task) => (
                 <SortableTaskItem
                   key={task.id}

@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { TaskCard } from "@/components/task/TaskCard";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import type { Task } from "@/lib/types";
+import { listColumnsClass, useListColumns } from "@/lib/listColumns";
 import type { DayInfo } from "./_helpers";
 import { DraggableTaskCard } from "./_DraggableTaskCard";
 
@@ -37,6 +38,7 @@ export function DaySection({
   onNewTask,
   enableDrag,
 }: DaySectionProps) {
+  const [cols] = useListColumns();
   const allTasks = info?.tasks ?? [];
   const groups = useMemo(() => {
     const active: Task[] = [];
@@ -78,7 +80,7 @@ export function DaySection({
       ) : (
         <>
           {groups.active.length > 0 && (
-            <div className="space-y-2">
+            <div className={listColumnsClass(cols)}>
               {groups.active.map((t) =>
                 enableDrag ? (
                   <DraggableTaskCard

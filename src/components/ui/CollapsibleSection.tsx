@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { listColumnsClass, useListColumns } from "@/lib/listColumns";
 
 /**
  * 列表分组容器：标题 + 计数 + 折叠按钮，children 自管内容。
@@ -32,6 +33,7 @@ export function CollapsibleSection({
   className,
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
+  const [cols] = useListColumns();
   if (count === 0) return null;
 
   const toneClass =
@@ -67,7 +69,7 @@ export function CollapsibleSection({
           {count}
         </span>
       </button>
-      {open && <div className="space-y-2">{children}</div>}
+      {open && <div className={listColumnsClass(cols)}>{children}</div>}
     </section>
   );
 }
