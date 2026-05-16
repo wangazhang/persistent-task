@@ -35,6 +35,7 @@ import { track } from "@/lib/analytics";
 import { useTaskStore } from "@/store/taskStore";
 import { usePomodoroStore } from "@/store/pomodoroStore";
 import { DaySection } from "./_DaySection";
+import { MonthSection } from "./_MonthSection";
 import {
   isDragTask,
   isDropDay,
@@ -147,6 +148,15 @@ export function MonthView({
     | null
     | { iso: string; rect: DOMRect }
   >(null);
+  // 月历下方面板视图：本日（DaySection）/ 本月（MonthSection）
+  const [panel, setPanel] = useState<"day" | "month">("day");
+  // 标签过滤后的"本月可见任务"——MonthSection 只读这部分
+  const filteredMonthTasks = useMemo(() => {
+    if (!tagFilter) return tasks;
+    return tasks.filter((t) =>
+      t.tagIds.some((id) => tagFilter.has(id))
+    );
+  }, [tasks, tagFilter]);
   const addTask = useTaskStore((s) => s.addTask);
   const updateTask = useTaskStore((s) => s.updateTask);
 
@@ -353,15 +363,50 @@ export function MonthView({
         </div>
       </PointerEventsGuard>
 
-      <DaySection
-        iso={date}
-        info={dayMap.get(date)}
-        filterActive={tagFilter !== null}
-        onEdit={onEdit}
-        onStartPomodoro={startPomodoroFor}
-        onNewTask={() => onNewTaskOnDate(date)}
-        enableDrag
-      />
+      {/* 月历下方面板：本日 / 本月切换 */}
+      <div className="mt-6 inline-flex overflow-hidden rounded-lg border border-ink-200">
+        {(
+          [
+            { k: "day" as const, l: "本日" },
+            { k: "month" as const, l: "本月" },
+          ]
+        ).map(({ k, l }) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setPanel(k)}
+            className={cn(
+              "px-3 py-1.5 text-xs transition-colors",
+              panel === k
+                ? "bg-brand-600 text-white"
+                : "bg-white text-ink-600 hover:bg-ink-50"
+            )}
+            aria-pressed={panel === k}
+          >
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {panel === "day" ? (
+        <DaySection
+          iso={date}
+          info={dayMap.get(date)}
+          filterActive={tagFilter !== null}
+          onEdit={onEdit}
+          onStartPomodoro={startPomodoroFor}
+          onNewTask={() => onNewTaskOnDate(date)}
+          enableDrag
+        />
+      ) : (
+        <MonthSection
+          monthAnchor={cursor}
+          tasks={filteredMonthTasks}
+          filterActive={tagFilter !== null}
+          onEdit={onEdit}
+          onStartPomodoro={startPomodoroFor}
+        />
+      )}
 
       {/*
         DragOverlay：跟随光标的拖拽预览，独立挂在 body 上（不会被 overflow 截断）。
