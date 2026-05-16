@@ -15,7 +15,7 @@ export type ActionMapper<S, K extends keyof EventMap = keyof EventMap> = (
   ret: unknown,
   args: unknown[],
   ctx: { prev: S; next: S }
-) => Array<[K, Record<string, unknown>]>;
+) => Array<[K, EventMap[K]]>;
 
 export type ActionMapping<S> = {
   // 用 string 而不是 keyof S,允许写宽松
