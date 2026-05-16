@@ -10,7 +10,10 @@
 //     量级（一个人一辈子任务 ≤ 10⁵）放心；将来需要再做分页。
 
 use crate::db::AppState;
-use crate::models::{PomodoroSession, PomodoroType, Tag, Task, TaskPriority, TaskStatus};
+use crate::models::{
+    AnalyticsEvent, EventCountRow, EventFilter, EventGroupBy, EventSource,
+    PomodoroSession, PomodoroType, Tag, Task, TaskPriority, TaskStatus,
+};
 use rusqlite::params;
 use tauri::State;
 
@@ -425,4 +428,167 @@ pub fn replace_db(state: State<AppState>, bytes: Vec<u8>) -> Result<(), String> 
     *guard = new_conn;
 
     Ok(())
+}
+
+// ────────────────────────────────────────────────────────────────
+// Events
+// ────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn insert_events(
+    state: State<AppState>,
+    events: Vec<AnalyticsEvent>,
+) -> Result<(), String> {
+    if events.is_empty() {
+        return Ok(());
+    }
+    let mut conn = state.conn.lock();
+    let tx = conn.transaction().map_err(to_err)?;
+    {
+        let mut stmt = tx
+            .prepare(
+                "INSERT OR REPLACE INTO events \
+                 (id,type,occurred_at,entity_type,entity_id,session_id,source,props) \
+                 VALUES (?,?,?,?,?,?,?,?)",
+            )
+            .map_err(to_err)?;
+        for e in &events {
+            let source_str = match e.source {
+                EventSource::Auto => "auto",
+                EventSource::Manual => "manual",
+            };
+            let props_json = serde_json::to_string(&e.props).map_err(to_err)?;
+            stmt.execute(params![
+                e.id,
+                e.r#type,
+                e.occurred_at,
+                e.entity_type,
+                e.entity_id,
+                e.session_id,
+                source_str,
+                props_json,
+            ])
+            .map_err(to_err)?;
+        }
+    }
+    tx.commit().map_err(to_err)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn query_events(
+    state: State<AppState>,
+    filter: EventFilter,
+) -> Result<Vec<AnalyticsEvent>, String> {
+    let conn = state.conn.lock();
+    let (where_sql, params_vec) = build_event_where(&filter);
+    let limit = filter.limit.unwrap_or(200).clamp(1, 2000);
+    let offset = filter.offset.unwrap_or(0).max(0);
+    let sql = format!(
+        "SELECT id,type,occurred_at,entity_type,entity_id,session_id,source,props \
+         FROM events {} ORDER BY occurred_at DESC, id DESC LIMIT {} OFFSET {}",
+        where_sql, limit, offset
+    );
+    let mut stmt = conn.prepare(&sql).map_err(to_err)?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(params_vec.iter()), |row| {
+            let source: String = row.get(6)?;
+            let props_str: String = row.get(7)?;
+            let props: serde_json::Value =
+                serde_json::from_str(&props_str).unwrap_or(serde_json::json!({}));
+            Ok(AnalyticsEvent {
+                id: row.get(0)?,
+                r#type: row.get(1)?,
+                occurred_at: row.get(2)?,
+                entity_type: row.get(3)?,
+                entity_id: row.get(4)?,
+                session_id: row.get(5)?,
+                source: if source == "auto" {
+                    EventSource::Auto
+                } else {
+                    EventSource::Manual
+                },
+                props,
+            })
+        })
+        .map_err(to_err)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r.map_err(to_err)?);
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+pub fn count_events(
+    state: State<AppState>,
+    filter: EventFilter,
+    group_by: EventGroupBy,
+) -> Result<Vec<EventCountRow>, String> {
+    let conn = state.conn.lock();
+    let (where_sql, params_vec) = build_event_where(&filter);
+    let key_expr = match group_by {
+        EventGroupBy::Day => "strftime('%Y-%m-%d', occurred_at, 'localtime')",
+        EventGroupBy::Hour => "strftime('%H', occurred_at, 'localtime')",
+        EventGroupBy::Type => "type",
+    };
+    let sql = format!(
+        "SELECT {k} AS k, COUNT(*) AS c FROM events {w} GROUP BY {k} ORDER BY {k} ASC",
+        k = key_expr,
+        w = where_sql
+    );
+    let mut stmt = conn.prepare(&sql).map_err(to_err)?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(params_vec.iter()), |row| {
+            Ok(EventCountRow {
+                key: row.get::<_, String>(0)?,
+                count: row.get::<_, i64>(1)?,
+            })
+        })
+        .map_err(to_err)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r.map_err(to_err)?);
+    }
+    Ok(out)
+}
+
+/// 把 EventFilter 拼成 WHERE 与参数列表（与 web 端 buildEventWhere 语义一致）
+fn build_event_where(filter: &EventFilter) -> (String, Vec<String>) {
+    let mut conds: Vec<String> = Vec::new();
+    let mut args: Vec<String> = Vec::new();
+    if let Some(ts) = &filter.types {
+        if !ts.is_empty() {
+            let placeholders = ts.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            conds.push(format!("type IN ({})", placeholders));
+            for t in ts {
+                args.push(t.clone());
+            }
+        }
+    }
+    if let Some(v) = &filter.entity_type {
+        conds.push("entity_type = ?".into());
+        args.push(v.clone());
+    }
+    if let Some(v) = &filter.entity_id {
+        conds.push("entity_id = ?".into());
+        args.push(v.clone());
+    }
+    if let Some(v) = &filter.session_id {
+        conds.push("session_id = ?".into());
+        args.push(v.clone());
+    }
+    if let Some(v) = &filter.from {
+        conds.push("occurred_at >= ?".into());
+        args.push(v.clone());
+    }
+    if let Some(v) = &filter.to {
+        conds.push("occurred_at <= ?".into());
+        args.push(v.clone());
+    }
+    if conds.is_empty() {
+        ("".into(), args)
+    } else {
+        (format!("WHERE {}", conds.join(" AND ")), args)
+    }
 }
