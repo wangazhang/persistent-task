@@ -24,7 +24,9 @@ import {
 import { ChevronDown, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { TaskCard } from "@/components/task/TaskCard";
+import { ListColumnsToggle } from "@/components/ui/ListColumnsToggle";
 import type { Task, TaskPriority } from "@/lib/types";
+import { listColumnsClass, useListColumns } from "@/lib/listColumns";
 import { cn, isoDate } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { useTaskStore } from "@/store/taskStore";
@@ -251,6 +253,7 @@ export function WeekView({
           >
             回到今天
           </button>
+          <ListColumnsToggle />
         </div>
       </div>
 
@@ -372,6 +375,7 @@ function WeekRow({
   // 让"忙日"垂直占位可控；展开后显示全部，再次点击收起
   const VISIBLE_LIMIT = 3;
   const [expanded, setExpanded] = useState(false);
+  const [cols] = useListColumns();
   const overflow = bucket.active.length > VISIBLE_LIMIT;
   const visibleTasks =
     expanded || !overflow
@@ -452,21 +456,23 @@ function WeekRow({
         </span>
       </button>
 
-      {/* 右侧任务区：纵向 stack */}
+      {/* 右侧任务区：纵向 stack / 双栏 grid（依 cols 偏好） */}
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {bucket.active.length === 0 ? (
           <div className="py-1 text-[11px] text-ink-300">—— 空 ——</div>
         ) : (
           <>
-            {visibleTasks.map((t) => (
-              <DraggableTaskCard
-                key={t.id}
-                task={t}
-                fromDate={iso}
-                onEdit={onEdit}
-                onStartPomodoro={onStartPomodoro}
-              />
-            ))}
+            <div className={listColumnsClass(cols)}>
+              {visibleTasks.map((t) => (
+                <DraggableTaskCard
+                  key={t.id}
+                  task={t}
+                  fromDate={iso}
+                  onEdit={onEdit}
+                  onStartPomodoro={onStartPomodoro}
+                />
+              ))}
+            </div>
             {overflow && (
               <button
                 type="button"
