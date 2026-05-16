@@ -16,6 +16,12 @@ import type {
   TaskPriority,
   TaskStatus,
 } from "../types";
+import type {
+  AnalyticsEvent,
+  EventCountRow,
+  EventFilter,
+  EventGroupBy,
+} from "../analytics/types";
 import {
   exportSqliteBytes,
   query,
@@ -56,6 +62,25 @@ function rowToPomodoro(r: Row): PomodoroSession {
     completed: n(r.completed) !== 0,
     startedAt: s(r.started_at),
     endedAt: s(r.ended_at),
+  };
+}
+
+function rowToEvent(r: Row): AnalyticsEvent {
+  let props: Record<string, unknown> = {};
+  try {
+    props = JSON.parse(s(r.props) || "{}");
+  } catch {
+    props = {};
+  }
+  return {
+    id: s(r.id),
+    type: s(r.type),
+    occurredAt: s(r.occurred_at),
+    entityType: (r.entity_type as string | null) ?? null,
+    entityId: (r.entity_id as string | null) ?? null,
+    sessionId: s(r.session_id),
+    source: (s(r.source) === "auto" ? "auto" : "manual"),
+    props,
   };
 }
 
@@ -241,4 +266,103 @@ export class SqliteAdapter implements DataAdapter {
   async replaceDb(bytes: Uint8Array): Promise<void> {
     await replaceSqliteBytes(bytes);
   }
+
+  async insertEvents(events: AnalyticsEvent[]): Promise<void> {
+    if (events.length === 0) return;
+    await tx(() => {
+      for (const e of events) {
+        run(
+          `INSERT OR REPLACE INTO events
+             (id,type,occurred_at,entity_type,entity_id,session_id,source,props)
+           VALUES (?,?,?,?,?,?,?,?)`,
+          [
+            e.id,
+            e.type,
+            e.occurredAt,
+            e.entityType,
+            e.entityId,
+            e.sessionId,
+            e.source,
+            JSON.stringify(e.props ?? {}),
+          ]
+        );
+      }
+    });
+  }
+
+  async queryEvents(filter: EventFilter): Promise<AnalyticsEvent[]> {
+    const { sql, args } = buildEventWhere(filter);
+    const limit = Math.min(Math.max(filter.limit ?? 200, 1), 2000);
+    const offset = Math.max(filter.offset ?? 0, 0);
+    const rows = query<Row>(
+      `SELECT id,type,occurred_at,entity_type,entity_id,session_id,source,props
+         FROM events
+         ${sql}
+         ORDER BY occurred_at DESC, id DESC
+         LIMIT ${limit} OFFSET ${offset}`,
+      args
+    );
+    return rows.map(rowToEvent);
+  }
+
+  async countEvents(
+    filter: EventFilter,
+    groupBy: EventGroupBy
+  ): Promise<EventCountRow[]> {
+    const { sql, args } = buildEventWhere(filter);
+    const keyExpr =
+      groupBy === "day"
+        ? `strftime('%Y-%m-%d', occurred_at, 'localtime')`
+        : groupBy === "hour"
+        ? `strftime('%H', occurred_at, 'localtime')`
+        : `type`;
+    const rows = query<Row>(
+      `SELECT ${keyExpr} AS k, COUNT(*) AS c
+         FROM events
+         ${sql}
+         GROUP BY ${keyExpr}
+         ORDER BY ${keyExpr} ASC`,
+      args
+    );
+    return rows.map((r) => ({ key: s(r.k), count: n(r.c) }));
+  }
+}
+
+/**
+ * 把 EventFilter 拼成 WHERE 子句 + 参数数组，给 query/count 共用。
+ * 空 filter 返回空 sql。
+ */
+function buildEventWhere(filter: EventFilter): { sql: string; args: (string | number | null)[] } {
+  const conds: string[] = [];
+  const args: (string | number | null)[] = [];
+  if (filter.types && filter.types.length > 0) {
+    conds.push(
+      `type IN (${filter.types.map(() => "?").join(",")})`
+    );
+    args.push(...filter.types);
+  }
+  if (filter.entityType) {
+    conds.push("entity_type = ?");
+    args.push(filter.entityType);
+  }
+  if (filter.entityId) {
+    conds.push("entity_id = ?");
+    args.push(filter.entityId);
+  }
+  if (filter.sessionId) {
+    conds.push("session_id = ?");
+    args.push(filter.sessionId);
+  }
+  if (filter.from) {
+    conds.push("occurred_at >= ?");
+    args.push(filter.from);
+  }
+  if (filter.to) {
+    conds.push("occurred_at <= ?");
+    args.push(filter.to);
+  }
+  return {
+    sql: conds.length === 0 ? "" : `WHERE ${conds.join(" AND ")}`,
+    args,
+  };
 }
