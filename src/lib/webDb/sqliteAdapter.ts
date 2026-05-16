@@ -269,7 +269,7 @@ export class SqliteAdapter implements DataAdapter {
 
   async insertEvents(events: AnalyticsEvent[]): Promise<void> {
     if (events.length === 0) return;
-    await tx(() => {
+    tx(() => {
       for (const e of events) {
         run(
           `INSERT OR REPLACE INTO events
