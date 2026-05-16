@@ -14,6 +14,7 @@ import {
   YAxis,
 } from "recharts";
 import { cn, fmtDuration, isoDate } from "@/lib/utils";
+import { useEventCount } from "@/lib/analytics/useEventStats";
 import { useTagStore } from "@/store/tagStore";
 import { useTaskStore } from "@/store/taskStore";
 
@@ -153,6 +154,24 @@ export function Stats() {
       { name: "已完成", value: map["已完成"], color: "#10b981" },
     ];
   }, [tasks]);
+
+  const fromIso = useMemo(
+    () => new Date(start.getFullYear(), start.getMonth(), start.getDate()).toISOString(),
+    [start]
+  );
+  const toIso = useMemo(() => {
+    const e = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59);
+    return e.toISOString();
+  }, [end]);
+
+  const created = useEventCount(
+    { types: ["task.created"], from: fromIso, to: toIso },
+    "hour"
+  );
+  const rescheduled = useEventCount(
+    { types: ["task.rescheduled"], from: fromIso, to: toIso },
+    "hour"
+  );
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
@@ -369,6 +388,52 @@ export function Stats() {
           </div>
         )}
       </div>
+
+      {/* —— 任务添加节奏 —— */}
+      <section className="mt-8 rounded-2xl border border-ink-200/60 bg-white p-6">
+        <h2 className="mb-3 text-sm font-semibold text-ink-700">任务添加节奏（按小时）</h2>
+        {created.loading ? (
+          <div className="text-xs text-ink-400">加载中…</div>
+        ) : created.error ? (
+          <div className="text-xs text-rose-500">加载失败</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={fillHours(created.data)}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="key" />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Bar dataKey="count" fill="#6366f1" />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </section>
+
+      {/* —— 改期时段分布 —— */}
+      <section className="mt-6 rounded-2xl border border-ink-200/60 bg-white p-6">
+        <h2 className="mb-3 text-sm font-semibold text-ink-700">改期时段分布（按小时）</h2>
+        {rescheduled.loading ? (
+          <div className="text-xs text-ink-400">加载中…</div>
+        ) : rescheduled.error ? (
+          <div className="text-xs text-rose-500">加载失败</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={fillHours(rescheduled.data)}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="key" />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Bar dataKey="count" fill="#f59e0b" />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </section>
+
+      {/* —— 标签完成率排行 —— */}
+      <section className="mt-6 rounded-2xl border border-ink-200/60 bg-white p-6">
+        <h2 className="mb-3 text-sm font-semibold text-ink-700">标签完成率 Top 10</h2>
+        <TagCompletionRanking start={start} end={end} />
+      </section>
     </div>
   );
 }
@@ -392,5 +457,56 @@ function Kpi({
       </div>
       {sub && <div className="text-xs text-ink-400">{sub}</div>}
     </div>
+  );
+}
+
+/** 把 hour 桶补齐 0..23,空缺按 0 计 */
+function fillHours(rows: { key: string; count: number }[]): { key: string; count: number }[] {
+  const map = new Map(rows.map((r) => [r.key, r.count]));
+  return Array.from({ length: 24 }, (_, h) => {
+    const key = String(h).padStart(2, "0");
+    return { key, count: map.get(key) ?? 0 };
+  });
+}
+
+function TagCompletionRanking({ start, end }: { start: Date; end: Date }) {
+  const tasks = useTaskStore((s) => s.tasks);
+  const tags = useTagStore((s) => s.tags);
+
+  const data = useMemo(() => {
+    const startStr = isoDate(start), endStr = isoDate(end);
+    const inRange = (iso?: string) =>
+      !!iso && iso.slice(0, 10) >= startStr && iso.slice(0, 10) <= endStr;
+
+    return tags
+      .map((tag) => {
+        const tagged = tasks.filter((t) => (t.tagIds ?? []).includes(tag.id));
+        const completed = tagged.filter(
+          (t) => t.status === "done" && inRange(t.completedAt)
+        );
+        return {
+          name: tag.name,
+          total: tagged.length,
+          completed: completed.length,
+          rate: tagged.length === 0 ? 0 : completed.length / tagged.length,
+        };
+      })
+      .filter((r) => r.total > 0)
+      .sort((a, b) => b.rate - a.rate)
+      .slice(0, 10);
+  }, [tasks, tags, start, end]);
+
+  if (data.length === 0) return <div className="text-xs text-ink-400">暂无数据</div>;
+
+  return (
+    <ResponsiveContainer width="100%" height={Math.max(120, data.length * 26)}>
+      <BarChart data={data} layout="vertical" margin={{ left: 60 }}>
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis type="number" domain={[0, 1]} tickFormatter={(v) => `${Math.round(v * 100)}%`} />
+        <YAxis type="category" dataKey="name" width={80} />
+        <Tooltip formatter={(v: number) => `${Math.round(v * 100)}%`} />
+        <Bar dataKey="rate" fill="#10b981" />
+      </BarChart>
+    </ResponsiveContainer>
   );
 }
