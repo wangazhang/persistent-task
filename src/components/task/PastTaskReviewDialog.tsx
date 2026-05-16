@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, PauseCircle, RotateCcw } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Modal } from "@/components/ui/Modal";
@@ -7,7 +7,7 @@ import { useTaskStore } from "@/store/taskStore";
 import { usePastReviewStore } from "@/store/pastReviewStore";
 import { isPastUnfinished } from "@/lib/pastReview";
 import { isoDate } from "@/lib/utils";
-import type { Task, TaskReviewAction } from "@/lib/types";
+import type { Task } from "@/lib/types";
 
 /**
  * 过期未完成任务次日处理 —— 主对话框。
@@ -41,9 +41,9 @@ export function PastTaskReviewDialog() {
   } | null>(null);
 
   // 主对话框打开但列表已经空了 → 自动关闭
-  if (open && list.length === 0) {
-    queueMicrotask(() => closeDialog());
-  }
+  useEffect(() => {
+    if (open && list.length === 0) closeDialog();
+  }, [open, list.length, closeDialog]);
 
   function handleDone(taskId: string) {
     reviewPastTask(taskId, "done");
