@@ -1,9 +1,9 @@
 import { useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 
-export type DataTab = "tasks" | "tags" | "pomodoros";
+export type DataTab = "tasks" | "tags" | "pomodoros" | "events";
 
-const VALID: DataTab[] = ["tasks", "tags", "pomodoros"];
+const VALID: DataTab[] = ["tasks", "tags", "pomodoros", "events"];
 
 export function useDataUrlState(): {
   tab: DataTab;
