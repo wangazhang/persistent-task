@@ -96,13 +96,21 @@ export function TaskEditor({
     }
     // 100% 子任务 → 自动 done。仅当当前 status 还不是 done 时联动，
     // 避免覆盖用户已显式标完成的 completedAt。
+    // 反向：已 done 的任务里再添加未完成子任务（done < total）→ 自动回到 in_progress，
+    // 并清掉 completedAt，避免「父任务显示已完成、却还存在未勾选子项」的状态错位。
     const progress = parseTaskProgress(description);
     let nextStatus = status;
     let completedAt: string | undefined;
+    let clearCompletedAt = false;
     if (progress && progress.total > 0 && progress.done === progress.total) {
       if (status !== "done") {
         nextStatus = "done";
         completedAt = new Date().toISOString();
+      }
+    } else if (progress && progress.total > 0 && progress.done < progress.total) {
+      if (status === "done") {
+        nextStatus = "in_progress";
+        clearCompletedAt = true;
       }
     }
     const payload: Partial<Task> = {
@@ -119,6 +127,7 @@ export function TaskEditor({
       scheduledDates,
     };
     if (completedAt) payload.completedAt = completedAt;
+    if (clearCompletedAt) payload.completedAt = undefined;
     if (task) {
       updateTask(task.id, payload);
     } else {
