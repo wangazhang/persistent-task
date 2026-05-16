@@ -17,6 +17,12 @@ import type {
   Tag,
   Task,
 } from "./types";
+import type {
+  AnalyticsEvent,
+  EventCountRow,
+  EventFilter,
+  EventGroupBy,
+} from "./analytics/types";
 
 export interface DataAdapter {
   // tasks
@@ -41,6 +47,14 @@ export interface DataAdapter {
   exportDb(): Promise<Uint8Array>;
   /** 用传入字节流覆盖整库；返回后调用方应 location.reload() 让前端 re-hydrate */
   replaceDb(bytes: Uint8Array): Promise<void>;
+
+  // events
+  insertEvents(events: AnalyticsEvent[]): Promise<void>;
+  queryEvents(filter: EventFilter): Promise<AnalyticsEvent[]>;
+  countEvents(
+    filter: EventFilter,
+    groupBy: EventGroupBy
+  ): Promise<EventCountRow[]>;
 }
 
 /**
@@ -113,6 +127,16 @@ class TauriAdapter implements DataAdapter {
   replaceDb(bytes: Uint8Array) {
     // Uint8Array → number[] 走 JSON 走 IPC。同上，量级可接受。
     return this.invoke<void>("replace_db", { bytes: Array.from(bytes) });
+  }
+
+  insertEvents(events: AnalyticsEvent[]) {
+    return this.invoke<void>("insert_events", { events });
+  }
+  queryEvents(filter: EventFilter) {
+    return this.invoke<AnalyticsEvent[]>("query_events", { filter });
+  }
+  countEvents(filter: EventFilter, groupBy: EventGroupBy) {
+    return this.invoke<EventCountRow[]>("count_events", { filter, groupBy });
   }
 }
 
