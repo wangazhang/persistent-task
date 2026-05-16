@@ -27,7 +27,7 @@ import type { Task, TaskPriority } from "@/lib/types";
 import { isoDate } from "@/lib/utils";
 import { usePomodoroStore } from "@/store/pomodoroStore";
 import { useTaskStore } from "@/store/taskStore";
-import { taskSorter } from "./_helpers";
+import { taskSorter, useTagFilterSet } from "./_helpers";
 
 /**
  * Today view：聚焦今日，保留快速添加输入框和同日内拖拽排序。
@@ -68,14 +68,19 @@ function SortableTaskItem({
 interface Props {
   onEdit: (t: Task) => void;
   onCreate: () => void;
+  /** 从 URL 来的标签筛选；空数组 = 不过滤 */
+  tags: string[];
 }
 
-export function TodayView({ onEdit, onCreate }: Props) {
+export function TodayView({ onEdit, onCreate, tags }: Props) {
   const navigate = useNavigate();
   const today = isoDate();
   const tasks = useTaskStore((s) => s.tasks);
   const reorder = useTaskStore((s) => s.reorderForDate);
   const addTask = useTaskStore((s) => s.addTask);
+  const tagFilter = useTagFilterSet(tags);
+  const passTag = (t: Task) =>
+    !tagFilter || t.tagIds.some((id) => tagFilter.has(id));
 
   const todayTasks = useMemo(() => {
     return tasks
@@ -83,28 +88,37 @@ export function TodayView({ onEdit, onCreate }: Props) {
         (t) =>
           t.scheduledDates.includes(today) &&
           t.status !== "done" &&
-          t.status !== "suspended"
+          t.status !== "suspended" &&
+          passTag(t)
       )
       .sort(taskSorter);
-  }, [tasks, today]);
+  }, [tasks, today, tagFilter]);
 
   const suspendedToday = useMemo(() => {
     return tasks
       .filter(
-        (t) => t.status === "suspended" && t.scheduledDates.includes(today)
+        (t) =>
+          t.status === "suspended" &&
+          t.scheduledDates.includes(today) &&
+          passTag(t)
       )
       .sort(taskSorter);
-  }, [tasks, today]);
+  }, [tasks, today, tagFilter]);
 
   const completedToday = useMemo(() => {
     return tasks
-      .filter((t) => t.status === "done" && t.scheduledDates.includes(today))
+      .filter(
+        (t) =>
+          t.status === "done" &&
+          t.scheduledDates.includes(today) &&
+          passTag(t)
+      )
       .sort((a, b) => {
         const ta = a.completedAt ?? a.updatedAt;
         const tb = b.completedAt ?? b.updatedAt;
         return new Date(tb).getTime() - new Date(ta).getTime();
       });
-  }, [tasks, today]);
+  }, [tasks, today, tagFilter]);
 
   const [quickInput, setQuickInput] = useState("");
   const [quickPriority, setQuickPriority] = useState<TaskPriority>("p2");

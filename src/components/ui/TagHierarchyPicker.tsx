@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, X } from "lucide-react";
+import { ChevronRight, Home, X } from "lucide-react";
 import type { Tag, TagNode } from "@/lib/types";
 import { useTagStore } from "@/store/tagStore";
 import { cn } from "@/lib/utils";
-import { TagChip } from "./TagChip";
 
 type SingleProps = {
   mode: "single";
@@ -83,12 +82,13 @@ export function TagHierarchyPicker(props: Props) {
     return level;
   }, [path, tree]);
 
-  // 面包屑：把 path 上的 Tag 拉出来
-  const crumbs: { id: string | null; name: string }[] = [
-    { id: null, name: "全部标签" },
+  // 面包屑：仅在已钻入子层级时显示。根层级用 chip 行就够了，避免"全部标签"成为冗余说明文字。
+  const showCrumbs = path.length > 0;
+  const crumbs: { id: string | null; node: React.ReactNode }[] = [
+    { id: null, node: <Home className="h-3 w-3" /> },
     ...path.map((id) => ({
       id,
-      name: tagsById.get(id)?.name ?? "?",
+      node: tagsById.get(id)?.name ?? "?",
     })),
   ];
 
@@ -120,42 +120,45 @@ export function TagHierarchyPicker(props: Props) {
 
   return (
     <div className={cn("space-y-2", props.className)}>
-      {/* 面包屑 */}
-      <div className="flex flex-wrap items-center gap-1 text-xs">
-        {crumbs.map((c, i) => {
-          const isLast = i === crumbs.length - 1;
-          return (
-            <div key={c.id ?? "__root__"} className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => gotoCrumb(i)}
-                disabled={isLast}
-                className={cn(
-                  "rounded px-1.5 py-0.5 transition-colors",
-                  isLast
-                    ? "font-medium text-ink-700"
-                    : "text-ink-500 hover:bg-ink-100 hover:text-ink-700"
-                )}
-              >
-                {c.name}
-              </button>
-              {!isLast && <ChevronRight className="h-3 w-3 text-ink-300" />}
-            </div>
-          );
-        })}
-        {/* 单选模式右上角"清除"按钮 */}
-        {props.mode === "single" && props.value && (
-          <button
-            type="button"
-            onClick={() => props.onChange(null)}
-            className="ml-auto flex items-center gap-0.5 rounded px-1.5 py-0.5 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
-            title="清除标签筛选"
-          >
-            <X className="h-3 w-3" />
-            清除
-          </button>
-        )}
-      </div>
+      {/* 面包屑：只在钻入子层级时出现，根层级保持空 */}
+      {showCrumbs && (
+        <div className="flex flex-wrap items-center gap-1 text-xs">
+          {crumbs.map((c, i) => {
+            const isLast = i === crumbs.length - 1;
+            return (
+              <div key={c.id ?? "__root__"} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => gotoCrumb(i)}
+                  disabled={isLast}
+                  className={cn(
+                    "inline-flex items-center rounded px-1.5 py-0.5 transition-colors",
+                    isLast
+                      ? "font-medium text-ink-700"
+                      : "text-ink-500 hover:bg-ink-100 hover:text-ink-700"
+                  )}
+                  title={c.id === null ? "回到全部" : undefined}
+                >
+                  {c.node}
+                </button>
+                {!isLast && <ChevronRight className="h-3 w-3 text-ink-300" />}
+              </div>
+            );
+          })}
+          {/* 单选模式右上角"清除"按钮 */}
+          {props.mode === "single" && props.value && (
+            <button
+              type="button"
+              onClick={() => props.onChange(null)}
+              className="ml-auto inline-flex h-5 w-5 items-center justify-center rounded text-ink-400 hover:bg-ink-100 hover:text-ink-700"
+              title="清除标签筛选"
+              aria-label="清除标签筛选"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 当前层级 chip 列表 */}
       <div className="flex flex-wrap items-center gap-1.5">
@@ -222,27 +225,6 @@ export function TagHierarchyPicker(props: Props) {
           );
         })}
       </div>
-
-      {/* 多选模式下，把已选的 chip 也显示一行（可能在别的层级），方便回看 */}
-      {props.mode === "multi" && props.value.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1 border-t border-ink-100 pt-2">
-          <span className="text-[11px] text-ink-400">已选：</span>
-          {props.value.map((id) => {
-            const tag = tagsById.get(id);
-            if (!tag) return null;
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => toggleSelect(id)}
-                title="点击取消选择"
-              >
-                <TagChip tag={tag} className="ring-1 ring-brand-200" />
-              </button>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

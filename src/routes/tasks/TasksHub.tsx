@@ -82,15 +82,11 @@ export function TasksHub() {
 
   // 过滤条可见性：
   // - today: 完全不显示（保留聚焦体感）
+  // - today: 显示标签过滤（与周/月/年保持一致），其他子项继续隐藏，保留 today 极简的开盖即用
   // - week / month / year: 显示标签过滤（日历语义下标签过滤会让色阶 / 任务列同步过滤）
   //   状态 / 搜索目前留在这里不放进时间维度视图，因为日历的可视化语义跟它们不正交
   //   （TODO：后续考虑搜索框跨 view 共享，搜索结果以临时列表浮层呈现）
-  const filterVisibility = (() => {
-    if (view === "today") {
-      return { show: false, search: false, status: false, tags: false };
-    }
-    return { show: true, search: false, status: false, tags: true };
-  })();
+  const filterVisibility = { show: true, search: false, status: false, tags: true };
 
   return (
     <div className="mx-auto max-w-5xl px-8 py-8">
@@ -154,12 +150,11 @@ export function TasksHub() {
           showSearch={filterVisibility.search}
           showStatus={filterVisibility.status}
           showTags={filterVisibility.tags}
-          tagHint="选中后日历色阶 / 任务列表都会按标签过滤"
         />
       )}
 
       {view === "today" && (
-        <TodayView onEdit={openEdit} onCreate={() => openCreate()} />
+        <TodayView tags={tags} onEdit={openEdit} onCreate={() => openCreate()} />
       )}
       {view === "week" && (
         <WeekView
