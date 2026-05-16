@@ -147,33 +147,35 @@ export function EventsTable() {
           {(Object.entries(TYPE_GROUPS) as [keyof typeof TYPE_GROUPS, EventType[]][]).map(([group, ts]) => {
             const allSelected = ts.length > 0 && ts.every((t) => types.includes(t));
             return (
-              <div key={group} className="flex flex-wrap items-center gap-1.5">
+              <div key={group} className="flex items-start gap-1.5">
                 <button
                   type="button"
                   onClick={() => onGroupClick(group)}
                   className={cn(
-                    "w-16 text-left text-[11px] uppercase",
+                    "w-16 shrink-0 py-0.5 text-left text-[11px] uppercase",
                     allSelected ? "font-semibold text-brand-700" : "text-ink-400 hover:text-ink-600"
                   )}
                   title={allSelected ? "取消全选这一组" : "只看这一组"}
                 >
                   {group}
                 </button>
-                {ts.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => toggleType(t)}
-                    className={cn(
-                      "rounded-full border px-2 py-0.5 text-[11px]",
-                      types.includes(t)
-                        ? "border-brand-500 bg-brand-50 text-brand-700"
-                        : "border-ink-200 text-ink-500 hover:bg-ink-50"
-                    )}
-                  >
-                    {t.split(".")[1]}
-                  </button>
-                ))}
+                <div className="flex flex-1 flex-wrap items-center gap-1.5">
+                  {ts.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => toggleType(t)}
+                      className={cn(
+                        "rounded-full border px-2 py-0.5 text-[11px]",
+                        types.includes(t)
+                          ? "border-brand-500 bg-brand-50 text-brand-700"
+                          : "border-ink-200 text-ink-500 hover:bg-ink-50"
+                      )}
+                    >
+                      {t.split(".")[1]}
+                    </button>
+                  ))}
+                </div>
               </div>
             );
           })}
