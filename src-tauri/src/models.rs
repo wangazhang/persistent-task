@@ -154,3 +154,66 @@ impl PomodoroType {
         }
     }
 }
+
+// ────────────────────────────────────────────────────────────────
+// Analytics Events
+// ────────────────────────────────────────────────────────────────
+
+/// 事件来源：auto = store 中间件自动产出；manual = 显式 track() 调用
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum EventSource {
+    Auto,
+    Manual,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyticsEvent {
+    pub id: String,
+    pub r#type: String,
+    pub occurred_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity_id: Option<String>,
+    pub session_id: String,
+    pub source: EventSource,
+    /// 任意 JSON 对象;前端约定 stringify 后传入
+    pub props: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct EventFilter {
+    #[serde(default)]
+    pub types: Option<Vec<String>>,
+    #[serde(default)]
+    pub entity_type: Option<String>,
+    #[serde(default)]
+    pub entity_id: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub from: Option<String>,
+    #[serde(default)]
+    pub to: Option<String>,
+    #[serde(default)]
+    pub limit: Option<i64>,
+    #[serde(default)]
+    pub offset: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EventGroupBy {
+    Day,
+    Hour,
+    Type,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventCountRow {
+    pub key: String,
+    pub count: i64,
+}
