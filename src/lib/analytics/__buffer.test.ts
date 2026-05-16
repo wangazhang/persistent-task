@@ -78,9 +78,9 @@ async function run() {
       maxRetries: 3,
     });
     buf.push(mkEvent("e"));
-    await new Promise(r => setTimeout(r, 10));
+    await new Promise(r => setTimeout(r, 50));
     // 触发了重试,但最终丢弃
-    ok("attempted >=1 time", calls.length >= 1);
+    ok("attempted exactly maxRetries times", calls.length === 3);
     ok("buffer drained after maxRetries", buf.size() === 0);
   }
 

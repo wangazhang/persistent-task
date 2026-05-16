@@ -40,18 +40,16 @@ export function createBuffer(opts: BufferOptions): Buffer {
       if (queue.length > 0) void flushOnce(false);
     }, intervalMs);
     // Node/Deno 下可被 unref;浏览器无此函数
-    // @ts-expect-error optional unref
     timer?.unref?.();
   };
 
   /**
-   * flushOnce: drain the queue, retrying up to maxRetries on failure.
+   * 写一次。两种模式：
+   *   - exhaustRetries=true（threshold/critical/flushNow）：内联跑满 maxRetries 次,失败后丢弃。
+   *   - exhaustRetries=false（interval tick）：单次尝试,失败把整批退回队首,等下次 tick。
    *
-   * @param exhaustRetries - when true (threshold/critical-triggered flush),
-   *   retry immediately within this call until maxRetries exhausted, so the
-   *   batch is guaranteed to be either written or dropped before returning.
-   *   When false (interval-triggered), only attempt once and re-queue for
-   *   the next interval tick.
+   * 已知限制：interval 路径没有跨 tick 的 retry 计数,permanent-fail 的 writer 下队列会增长。
+   * 对本应用（本地 SQLite,writer 几乎不会持续失败）可接受;且 critical/threshold 路径会先把队列耗尽。
    */
   async function flushOnce(exhaustRetries: boolean): Promise<void> {
     if (inFlight) return;
@@ -121,8 +119,7 @@ export function createBuffer(opts: BufferOptions): Buffer {
       }
     },
     async flushNow() {
-      // 最多等一轮(避免 inFlight 时直接返回)
-      if (inFlight) {
+      while (inFlight) {
         await new Promise((r) => setTimeout(r, 0));
       }
       await flushOnce(true);
