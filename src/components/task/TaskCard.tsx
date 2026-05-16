@@ -218,7 +218,14 @@ export function TaskCard({
           </div>
           {/* 进度环：仅当 description 含子任务时显示。常驻可见（不随 hover 隐藏）。*/}
           {progress && (
-            <div className="shrink-0" title={`子任务 ${progress.done}/${progress.total} 已完成`}>
+            <div
+              className="shrink-0"
+              title={
+                progress.inProgress > 0
+                  ? `子任务 ${progress.done}/${progress.total} 已完成，${progress.inProgress} 进行中`
+                  : `子任务 ${progress.done}/${progress.total} 已完成`
+              }
+            >
               <ProgressRing percent={progress.percent} size={28} stroke={3} />
             </div>
           )}

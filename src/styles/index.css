@@ -86,11 +86,9 @@
   @apply flex items-start gap-2;
   list-style: none;
 }
-.tiptap ul[data-type="taskList"] li > label {
-  @apply mt-[3px] flex-shrink-0 cursor-pointer;
-}
-.tiptap ul[data-type="taskList"] li > label > input[type="checkbox"] {
-  @apply h-3.5 w-3.5 cursor-pointer rounded border-ink-300 accent-brand-600;
+.tiptap ul[data-type="taskList"] li > label.tri-task-checkbox {
+  @apply mt-[3px] flex-shrink-0 cursor-pointer select-none;
+  display: inline-flex;
 }
 .tiptap ul[data-type="taskList"] li > div {
   @apply flex-1;
@@ -98,9 +96,61 @@
 .tiptap ul[data-type="taskList"] li > div > p {
   @apply my-0;
 }
+
+/* 三态复选框：用 ::before 画底色圆 / 进行中半圆 / 完成勾 */
+.tri-task-checkbox__btn {
+  position: relative;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  border: 1.5px solid;
+  box-sizing: border-box;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+/* 未开始：灰色空心圆 */
+.tri-task-checkbox__btn[data-state="todo"] {
+  border-color: rgb(203 213 225); /* ink-300 */
+  background: #fff;
+}
+.tri-task-checkbox__btn[data-state="todo"]:hover {
+  border-color: rgb(99 102 241); /* brand-500 */
+}
+/* 进行中：橙色半填充（左半实右半空） */
+.tri-task-checkbox__btn[data-state="in_progress"] {
+  border-color: rgb(245 158 11); /* warning-500 */
+  background: linear-gradient(
+    90deg,
+    rgb(245 158 11) 0%,
+    rgb(245 158 11) 50%,
+    transparent 50%,
+    transparent 100%
+  );
+}
+/* 完成：绿色填充 + 勾 */
+.tri-task-checkbox__btn[data-state="done"] {
+  border-color: rgb(16 185 129); /* success-500 */
+  background: rgb(16 185 129);
+}
+.tri-task-checkbox__btn[data-state="done"]::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 1px;
+  width: 4px;
+  height: 7px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
 /* 已完成的子任务 */
-.tiptap ul[data-type="taskList"] li[data-checked="true"] > div {
+.tiptap ul[data-type="taskList"] li[data-state="done"] > div {
   @apply text-ink-400 line-through;
+}
+/* 进行中的子任务 */
+.tiptap ul[data-type="taskList"] li[data-state="in_progress"] > div {
+  @apply text-ink-700;
 }
 
 /* 空编辑器 placeholder（@tiptap/extension-placeholder 在空节点上挂 data-placeholder）*/

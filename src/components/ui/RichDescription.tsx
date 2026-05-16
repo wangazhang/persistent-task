@@ -13,11 +13,12 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TaskList from "@tiptap/extension-task-list";
-import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { TriTaskItem } from "./TriTaskItem";
+import markdownItTaskListsTri from "@/lib/markdownItTaskListsTri";
 
 interface RichDescriptionProps {
   /** 初始 / 受控 markdown 内容 */
@@ -48,7 +49,7 @@ export function RichDescription({
         // 但我们暂不做工具栏，所以用户主要通过 markdown 输入触发
       }),
       TaskList,
-      TaskItem.configure({ nested: true }),
+      TriTaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder }),
       Markdown.configure({
         html: false,
@@ -79,8 +80,27 @@ export function RichDescription({
 
   // 父级换了 task（value 变成另一个任务的内容）时，把编辑器内容同步过去。
   // 关键：不能让 setContent 触发 onUpdate，否则会反向写脏 onChange。
+  //
+  // 这里顺带做两件事：
+  //   1) 第一次 editor 就绪时，把三态插件挂到 markdown-it 的 parser 上
+  //   2) 然后再用 parser 重新 parse 一次初始内容，避免 markdown 扩展在
+  //      onBeforeCreate 阶段就已经按"无三态"语义把 [/] 当普通文字解析掉
+  const pluginInstalledRef = useRef(false);
   useEffect(() => {
     if (!editor) return;
+    if (!pluginInstalledRef.current) {
+      const storage = (editor.storage as unknown as Record<string, unknown>)
+        .markdown as
+        | { parser?: { md?: { use: (p: unknown) => void } } }
+        | undefined;
+      if (storage?.parser?.md) {
+        storage.parser.md.use(markdownItTaskListsTri);
+        pluginInstalledRef.current = true;
+        // 用新插件重新 parse 初始内容
+        editor.commands.setContent(value || "", { emitUpdate: false });
+        return;
+      }
+    }
     const current = (editor.storage as { markdown?: { getMarkdown: () => string } })
       .markdown?.getMarkdown();
     if (current === value) return;
