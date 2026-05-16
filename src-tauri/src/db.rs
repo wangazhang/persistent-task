@@ -58,7 +58,8 @@ impl AppState {
                 doc_title    TEXT,
                 completed_at TEXT,
                 created_at   TEXT NOT NULL,
-                updated_at   TEXT NOT NULL
+                updated_at   TEXT NOT NULL,
+                review_log   TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
             CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
@@ -97,6 +98,7 @@ impl AppState {
         ensure_column(conn, "tasks", "priority", "TEXT NOT NULL DEFAULT 'p2'")?;
         // color 在 0.2 中加入，可空（未设则前端按优先级 / 状态色降级）
         ensure_column(conn, "tasks", "color", "TEXT")?;
+        ensure_column(conn, "tasks", "review_log", "TEXT")?;
 
         Ok(())
     }

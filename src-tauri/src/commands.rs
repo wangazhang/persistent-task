@@ -32,7 +32,8 @@ pub fn list_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
         .prepare(
             r#"
             SELECT id, title, description, status, priority, "order",
-                   doc_url, doc_title, color, completed_at, created_at, updated_at
+                   doc_url, doc_title, color, completed_at, created_at, updated_at,
+                   review_log
             FROM tasks
             "#,
         )
@@ -52,14 +53,28 @@ pub fn list_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
                 row.get::<_, Option<String>>(9)?,          // completed_at
                 row.get::<_, String>(10)?,                 // created_at
                 row.get::<_, String>(11)?,                 // updated_at
+                row.get::<_, Option<String>>(12)?,         // review_log
             ))
         })
         .map_err(to_err)?;
 
     let mut tasks: Vec<Task> = Vec::new();
     for r in task_rows {
-        let (id, title, description, status, priority, order, doc_url, doc_title, color, completed_at, created_at, updated_at) =
-            r.map_err(to_err)?;
+        let (
+            id,
+            title,
+            description,
+            status,
+            priority,
+            order,
+            doc_url,
+            doc_title,
+            color,
+            completed_at,
+            created_at,
+            updated_at,
+            review_log,
+        ) = r.map_err(to_err)?;
         tasks.push(Task {
             id,
             title,
@@ -75,6 +90,7 @@ pub fn list_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
             completed_at,
             created_at,
             updated_at,
+            review_log,
         });
     }
     drop(stmt);
@@ -132,8 +148,9 @@ pub fn upsert_task(state: State<AppState>, task: Task) -> Result<(), String> {
         r#"
         INSERT INTO tasks (
             id, title, description, status, priority, "order",
-            doc_url, doc_title, color, completed_at, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            doc_url, doc_title, color, completed_at, created_at, updated_at,
+            review_log
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
         ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
             description = excluded.description,
@@ -144,7 +161,8 @@ pub fn upsert_task(state: State<AppState>, task: Task) -> Result<(), String> {
             doc_title = excluded.doc_title,
             color = excluded.color,
             completed_at = excluded.completed_at,
-            updated_at = excluded.updated_at
+            updated_at = excluded.updated_at,
+            review_log = excluded.review_log
         "#,
         params![
             task.id,
@@ -159,6 +177,7 @@ pub fn upsert_task(state: State<AppState>, task: Task) -> Result<(), String> {
             task.completed_at,
             task.created_at,
             task.updated_at,
+            task.review_log,
         ],
     )
     .map_err(to_err)?;
