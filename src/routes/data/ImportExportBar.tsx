@@ -3,11 +3,13 @@ import { Download, Upload } from "lucide-react";
 import { exportDbToFile, importDbFromFile } from "@/lib/dbBackup";
 import { useTaskStore } from "@/store/taskStore";
 import { useTagStore } from "@/store/tagStore";
+import { track } from "@/lib/analytics";
 
 export function ImportExportBar() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   async function handleExport() {
+    track("ui.export", { kind: "db" });
     await exportDbToFile();
   }
 
@@ -16,6 +18,7 @@ export function ImportExportBar() {
   }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    track("ui.import", { kind: "db" });
     const file = e.target.files?.[0];
     // 重置 input 让用户能连续选同一个文件
     e.target.value = "";

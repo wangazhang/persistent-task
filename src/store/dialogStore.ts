@@ -13,6 +13,7 @@
  */
 
 import { create } from "zustand";
+import { track } from "@/lib/analytics";
 
 export interface DialogOptions {
   title: string;
@@ -69,10 +70,12 @@ function openDialog(
 
 /** 询问确认；true=用户点了确定，false=取消/关闭/被新对话框替代 */
 export function confirm(opts: DialogOptions): Promise<boolean> {
+  track("ui.dialog.open", { dialog: "confirm" });
   return openDialog(opts, true);
 }
 
 /** 显示提示信息（只有确定按钮）。返回的 Promise 在用户关闭时 resolve。 */
 export function alert(opts: DialogOptions): Promise<void> {
+  track("ui.dialog.open", { dialog: "alert" });
   return openDialog(opts, false).then(() => undefined);
 }

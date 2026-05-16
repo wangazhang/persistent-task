@@ -29,6 +29,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import type { Task } from "@/lib/types";
 import { cn, isoDate } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 import { usePomodoroStore } from "@/store/pomodoroStore";
 import { useTaskStore } from "@/store/taskStore";
 import { TaskCard } from "@/components/task/TaskCard";
@@ -188,7 +189,10 @@ export function YearView({
               selectedISO={date}
               onClickDay={onDateChange}
               onClickHeader={() => onSwitchToMonth(format(m, "yyyy-MM-dd"))}
-              onOpenPopover={(iso, rect) => setPopover({ iso, rect })}
+              onOpenPopover={(iso, rect) => {
+                track("ui.popover.open", { popover: "day-tasks", date: iso });
+                setPopover({ iso, rect });
+              }}
             />
           ))}
         </div>

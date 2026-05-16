@@ -26,6 +26,7 @@ import { useNavigate } from "react-router-dom";
 import { TaskCard } from "@/components/task/TaskCard";
 import type { Task, TaskPriority } from "@/lib/types";
 import { cn, isoDate } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 import { useTaskStore } from "@/store/taskStore";
 import { usePomodoroStore } from "@/store/pomodoroStore";
 import {
@@ -277,7 +278,10 @@ export function WeekView({
                 })
               }
               onStartPomodoro={startPomodoroFor}
-              onOpenPopover={(iso, rect) => setPopover({ iso, rect })}
+              onOpenPopover={(iso, rect) => {
+                track("ui.popover.open", { popover: "day-tasks", date: iso });
+                setPopover({ iso, rect });
+              }}
             />
           );
         })}

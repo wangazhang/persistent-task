@@ -31,6 +31,7 @@ import { useNavigate } from "react-router-dom";
 import { TaskCard } from "@/components/task/TaskCard";
 import type { Task } from "@/lib/types";
 import { cn, isoDate } from "@/lib/utils";
+import { track } from "@/lib/analytics";
 import { useTaskStore } from "@/store/taskStore";
 import { usePomodoroStore } from "@/store/pomodoroStore";
 import { DaySection } from "./_DaySection";
@@ -316,7 +317,10 @@ export function MonthView({
                     info={dayMap.get(dayISO)}
                     maxScale={maxInMonth}
                     onPick={onDateChange}
-                    onOpenPopover={(iso, rect) => setPopover({ iso, rect })}
+                    onOpenPopover={(iso, rect) => {
+                      track("ui.popover.open", { popover: "day-tasks", date: iso });
+                      setPopover({ iso, rect });
+                    }}
                     coveredTaskIds={bars.coveredTaskIds}
                     dragHighlight={inDrag}
                   />

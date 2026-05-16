@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useTagStore } from "@/store/tagStore";
 import { useTaskStore } from "@/store/taskStore";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { track } from "@/lib/analytics";
 
 /**
  * 任务搜索 Modal（命令面板风格）。
@@ -49,7 +50,11 @@ export function SearchModal({ open, onClose, onOpenTask }: SearchModalProps) {
   const [raw, setRaw] = useState("");
   const [query, setQuery] = useState("");
   useEffect(() => {
-    const id = setTimeout(() => setQuery(raw.trim()), 100);
+    const id = setTimeout(() => {
+      const q = raw.trim();
+      setQuery(q);
+      if (q) track("ui.search.used", { queryLength: q.length });
+    }, 100);
     return () => clearTimeout(id);
   }, [raw]);
 
