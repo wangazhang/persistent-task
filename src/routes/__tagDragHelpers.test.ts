@@ -44,7 +44,6 @@ const tags: Tag[] = [
 ];
 
 const active = createActiveTagDrag(tags[0], [
-  "root-a",
   "child-a",
   "child-b",
   "grandchild-a",
@@ -53,7 +52,7 @@ const active = createActiveTagDrag(tags[0], [
 eq(
   "createActiveTagDrag caches blocked ids",
   [...active.descendantIds].sort(),
-  ["child-a", "child-b", "grandchild-a", "root-a"]
+  ["child-a", "child-b", "grandchild-a"]
 );
 
 eq("null active allows into target", isInvalidIntoTarget(null, "root-b"), false);

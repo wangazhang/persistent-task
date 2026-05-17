@@ -27,7 +27,9 @@ export function isInvalidIntoTarget(
   activeDrag: ActiveTagDrag | null,
   targetTagId: string
 ): boolean {
-  return activeDrag ? activeDrag.descendantIds.has(targetTagId) : false;
+  return activeDrag
+    ? activeDrag.tagId === targetTagId || activeDrag.descendantIds.has(targetTagId)
+    : false;
 }
 
 export function isInvalidGapTarget(
