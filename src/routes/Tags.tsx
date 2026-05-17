@@ -548,7 +548,7 @@ function TagRow({
   const activeIsSelf = active?.id === `tag-${node.id}`;
   const invalidInto = isInvalidIntoTarget(activeDrag, node.id);
   const showInvalidInto = isOver && invalidInto && !activeIsSelf;
-  const showIntoHighlight = isOver && !invalidInto;
+  const showIntoHighlight = isOver && !invalidInto && !activeIsSelf;
 
   return (
     <div>
@@ -621,46 +621,42 @@ function TagRow({
           </span>
         )}
 
-        {/* 行尾 hover 操作 */}
-        <div
-          className={cn(
-            "ml-auto flex items-center gap-1 opacity-0 transition-opacity",
-            dragging ? "pointer-events-none" : "group-hover:opacity-100"
-          )}
-        >
-          <button
-            type="button"
-            title="查看任务"
-            onClick={() => onLocate(node.id)}
-            className="rounded p-1 text-ink-400 hover:bg-brand-50 hover:text-brand-600"
-          >
-            <ListFilter className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            title="新建子标签"
-            onClick={() => onAddChild(node.id)}
-            className="rounded p-1 text-ink-400 hover:bg-brand-50 hover:text-brand-600"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            title="编辑"
-            onClick={() => onEdit(node)}
-            className="rounded p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            title="删除"
-            onClick={() => onDelete(node)}
-            className="rounded p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        {!dragging && (
+          <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              type="button"
+              title="查看任务"
+              onClick={() => onLocate(node.id)}
+              className="rounded p-1 text-ink-400 hover:bg-brand-50 hover:text-brand-600"
+            >
+              <ListFilter className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              title="新建子标签"
+              onClick={() => onAddChild(node.id)}
+              className="rounded p-1 text-ink-400 hover:bg-brand-50 hover:text-brand-600"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              title="编辑"
+              onClick={() => onEdit(node)}
+              className="rounded p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              title="删除"
+              onClick={() => onDelete(node)}
+              className="rounded p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
       </div>
 
       {showIntoHighlight && <TagDropPlaceholder level={level + 1} />}
