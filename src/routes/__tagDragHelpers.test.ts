@@ -82,6 +82,18 @@ eq(
 );
 
 eq(
+  "same parent gap before itself stays unchanged",
+  adjustGapIndex(tags, "root-b", null, 1),
+  { movedId: "root-b", parentId: null, newIndex: 1 }
+);
+
+eq(
+  "same parent gap immediately after itself adjusts to original index",
+  adjustGapIndex(tags, "root-b", null, 2),
+  { movedId: "root-b", parentId: null, newIndex: 1 }
+);
+
+eq(
   "cross parent index stays unchanged",
   adjustGapIndex(tags, "child-a", null, 1),
   { movedId: "child-a", parentId: null, newIndex: 1 }

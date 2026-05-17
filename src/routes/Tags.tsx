@@ -15,6 +15,7 @@ import {
   KeyboardSensor,
   PointerSensor,
   pointerWithin,
+  useDndContext,
   useDraggable,
   useDroppable,
   useSensor,
@@ -380,7 +381,7 @@ function TagDragPreview({ tag, count }: { tag: Tag; count: number }) {
         className="inline-block h-2.5 w-2.5 rounded-full"
         style={{ backgroundColor: tag.color }}
       />
-      <span className="truncate text-sm font-medium text-ink-800">
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-800">
         {tag.name}
       </span>
       <span className="shrink-0 text-xs text-ink-400">{count} 个任务</span>
@@ -462,6 +463,12 @@ interface TagTreeNodeProps {
   onLocate: (tagId: string) => void;
 }
 
+interface IntoDropState {
+  dragging: boolean;
+  showIntoHighlight: boolean;
+  showInvalidInto: boolean;
+}
+
 function TagTreeNode(props: TagTreeNodeProps) {
   const {
     node,
@@ -477,6 +484,22 @@ function TagTreeNode(props: TagTreeNodeProps) {
   } = props;
   const expanded = !collapsed.has(node.id);
   const hasChildren = node.children.length > 0;
+  const { active, over } = useDndContext();
+  const isOverInto = over?.id === `into-${node.id}`;
+  const activeIsSelf = active?.id === `tag-${node.id}`;
+  const invalidInto = isInvalidIntoTarget(activeDrag, node.id);
+  const intoDropState: IntoDropState = {
+    dragging: !!active,
+    showIntoHighlight: isOverInto && !invalidInto && !activeIsSelf,
+    showInvalidInto: isOverInto && invalidInto,
+  };
+  const intoPlaceholder =
+    intoDropState.showIntoHighlight || intoDropState.showInvalidInto ? (
+      <TagDropPlaceholder
+        level={level + 1}
+        invalid={intoDropState.showInvalidInto}
+      />
+    ) : null;
 
   return (
     <div>
@@ -484,7 +507,7 @@ function TagTreeNode(props: TagTreeNodeProps) {
         node={node}
         level={level}
         expanded={expanded}
-        activeDrag={activeDrag}
+        intoDropState={intoDropState}
         toggleCollapse={toggleCollapse}
         taskCountByTag={taskCountByTag}
         onAddChild={onAddChild}
@@ -492,6 +515,7 @@ function TagTreeNode(props: TagTreeNodeProps) {
         onDelete={onDelete}
         onLocate={onLocate}
       />
+      {(!hasChildren || !expanded) && intoPlaceholder}
       {hasChildren && expanded && (
         <div>
           <GapDrop
@@ -522,6 +546,7 @@ function TagTreeNode(props: TagTreeNodeProps) {
               />
             </Fragment>
           ))}
+          {intoPlaceholder}
         </div>
       )}
     </div>
@@ -535,14 +560,17 @@ function TagRow({
   node,
   level,
   expanded,
-  activeDrag,
+  intoDropState,
   toggleCollapse,
   taskCountByTag,
   onAddChild,
   onEdit,
   onDelete,
   onLocate,
-}: Omit<TagTreeNodeProps, "collapsed"> & { expanded: boolean }) {
+}: Omit<TagTreeNodeProps, "collapsed" | "activeDrag"> & {
+  expanded: boolean;
+  intoDropState: IntoDropState;
+}) {
   const hasChildren = node.children.length > 0;
   const count = taskCountByTag.get(node.id) ?? 0;
 
@@ -556,8 +584,6 @@ function TagRow({
   } = useDraggable({ id: `tag-${node.id}`, data: dragData });
   const {
     setNodeRef: setDropRef,
-    isOver,
-    active,
   } = useDroppable({ id: `into-${node.id}`, data: dropData });
 
   const setRefs = useCallback(
@@ -568,11 +594,7 @@ function TagRow({
     [setDragRef, setDropRef]
   );
 
-  const dragging = !!active;
-  const activeIsSelf = active?.id === `tag-${node.id}`;
-  const invalidInto = isInvalidIntoTarget(activeDrag, node.id);
-  const showInvalidInto = isOver && invalidInto;
-  const showIntoHighlight = isOver && !invalidInto && !activeIsSelf;
+  const { dragging, showInvalidInto, showIntoHighlight } = intoDropState;
 
   return (
     <div>
@@ -682,9 +704,6 @@ function TagRow({
           </div>
         )}
       </div>
-
-      {showIntoHighlight && <TagDropPlaceholder level={level + 1} />}
-      {showInvalidInto && <TagDropPlaceholder level={level + 1} invalid />}
     </div>
   );
 }
