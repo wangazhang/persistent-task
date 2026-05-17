@@ -11,6 +11,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   pointerWithin,
@@ -19,6 +20,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import { Modal } from "@/components/ui/Modal";
 import type { Tag, TagNode } from "@/lib/types";
@@ -30,6 +32,13 @@ import {
 } from "@/store/dialogStore";
 import { cn } from "@/lib/utils";
 import { PRESET_COLORS } from "@/lib/colors";
+import {
+  adjustGapIndex,
+  createActiveTagDrag,
+  isInvalidGapTarget,
+  isInvalidIntoTarget,
+  type ActiveTagDrag,
+} from "./tagDragHelpers";
 
 interface EditorState {
   open: boolean;
@@ -86,6 +95,11 @@ export function TagsPage() {
       return next;
     });
   }, []);
+  const [activeDrag, setActiveDrag] = useState<ActiveTagDrag | null>(null);
+
+  function clearActiveDrag() {
+    setActiveDrag(null);
+  }
 
   function openNew(parentId: string | null) {
     setEditor({ open: true, editing: null, parentId });
@@ -157,41 +171,57 @@ export function TagsPage() {
     useSensor(KeyboardSensor)
   );
 
-  function handleDragEnd(e: DragEndEvent) {
+  function handleDragStart(e: DragStartEvent) {
     const activeData = e.active.data.current as DragData | undefined;
-    const overData = e.over?.data.current as DropData | undefined;
-    if (!activeData || activeData.kind !== "tag" || !overData) return;
-    const movedId = activeData.tagId;
-
-    if (overData.kind === "into") {
-      // 拖到节点行 → 变成该节点的最后一个子节点
-      if (overData.tagId === movedId) return;
-      moveTag(movedId, overData.tagId, Number.MAX_SAFE_INTEGER);
-      // 自动展开收纳节点
-      setCollapsed((prev) => {
-        const next = new Set(prev);
-        next.delete(overData.tagId);
-        return next;
-      });
+    if (!activeData || activeData.kind !== "tag") {
+      clearActiveDrag();
       return;
     }
 
-    if (overData.kind === "gap") {
-      const { parentId, index } = overData;
-      const target = tags.find((t) => t.id === movedId);
-      if (!target) return;
+    const tag = tags.find((t) => t.id === activeData.tagId);
+    if (!tag) {
+      clearActiveDrag();
+      return;
+    }
 
-      // 同 parent 调整目标 index：gap 的 index 是按"含 active 的完整列表"计的，
-      // 而 moveTag 的 newIndex 语义是相对去掉 active 后的列表。
-      let newIdx = index;
-      if (target.parentId === parentId) {
-        const siblings = tags
-          .filter((t) => t.parentId === parentId)
-          .sort((a, b) => a.order - b.order);
-        const oldIndex = siblings.findIndex((t) => t.id === movedId);
-        if (oldIndex >= 0 && oldIndex < index) newIdx = index - 1;
+    setActiveDrag(createActiveTagDrag(tag, collectDescendants(tag.id)));
+  }
+
+  function handleDragEnd(e: DragEndEvent) {
+    try {
+      const activeData = e.active.data.current as DragData | undefined;
+      const overData = e.over?.data.current as DropData | undefined;
+      if (!activeData || activeData.kind !== "tag" || !overData) return;
+      const movedId = activeData.tagId;
+
+      if (overData.kind === "into") {
+        // 拖到节点行 → 变成该节点的最后一个子节点
+        if (overData.tagId === movedId) return;
+        if (isInvalidIntoTarget(activeDrag, overData.tagId)) return;
+
+        const moved = moveTag(movedId, overData.tagId, Number.MAX_SAFE_INTEGER);
+        if (!moved) return;
+
+        // 自动展开收纳节点
+        setCollapsed((prev) => {
+          const next = new Set(prev);
+          next.delete(overData.tagId);
+          return next;
+        });
+        return;
       }
-      moveTag(movedId, parentId, newIdx);
+
+      if (overData.kind === "gap") {
+        const { parentId, index } = overData;
+        if (isInvalidGapTarget(activeDrag, parentId)) return;
+
+        const adjusted = adjustGapIndex(tags, movedId, parentId, index);
+        if (!adjusted) return;
+
+        moveTag(adjusted.movedId, adjusted.parentId, adjusted.newIndex);
+      }
+    } finally {
+      clearActiveDrag();
     }
   }
 
@@ -218,17 +248,25 @@ export function TagsPage() {
         <DndContext
           sensors={sensors}
           collisionDetection={pointerWithin}
+          onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
+          onDragCancel={clearActiveDrag}
         >
           <div className="card overflow-hidden">
             {/* 顶部第一个 gap：插到根列表最前 */}
-            <GapDrop parentId={null} index={0} level={0} />
+            <GapDrop
+              parentId={null}
+              index={0}
+              level={0}
+              activeDrag={activeDrag}
+            />
             {tree.map((node, i) => (
               <Fragment key={node.id}>
                 <TagTreeNode
                   node={node}
                   level={0}
                   collapsed={collapsed}
+                  activeDrag={activeDrag}
                   toggleCollapse={toggleCollapse}
                   taskCountByTag={taskCountByTag}
                   onAddChild={openNew}
@@ -236,7 +274,12 @@ export function TagsPage() {
                   onDelete={deleteTag}
                   onLocate={locateTasks}
                 />
-                <GapDrop parentId={null} index={i + 1} level={0} />
+                <GapDrop
+                  parentId={null}
+                  index={i + 1}
+                  level={0}
+                  activeDrag={activeDrag}
+                />
               </Fragment>
             ))}
           </div>
@@ -319,10 +362,12 @@ function GapDrop({
   parentId,
   index,
   level,
+  activeDrag,
 }: {
   parentId: string | null;
   index: number;
   level: number;
+  activeDrag: ActiveTagDrag | null;
 }) {
   const id = `gap-${parentId ?? ROOT_KEY}-${index}`;
   const data: DropData = { kind: "gap", parentId, index };
@@ -362,6 +407,7 @@ interface TagTreeNodeProps {
   node: TagNode;
   level: number;
   collapsed: Set<string>;
+  activeDrag: ActiveTagDrag | null;
   toggleCollapse: (id: string) => void;
   taskCountByTag: Map<string, number>;
   onAddChild: (parentId: string | null) => void;
@@ -375,6 +421,7 @@ function TagTreeNode(props: TagTreeNodeProps) {
     node,
     level,
     collapsed,
+    activeDrag,
     toggleCollapse,
     taskCountByTag,
     onAddChild,
@@ -391,6 +438,7 @@ function TagTreeNode(props: TagTreeNodeProps) {
         node={node}
         level={level}
         expanded={expanded}
+        activeDrag={activeDrag}
         toggleCollapse={toggleCollapse}
         taskCountByTag={taskCountByTag}
         onAddChild={onAddChild}
@@ -400,13 +448,19 @@ function TagTreeNode(props: TagTreeNodeProps) {
       />
       {hasChildren && expanded && (
         <div>
-          <GapDrop parentId={node.id} index={0} level={level + 1} />
+          <GapDrop
+            parentId={node.id}
+            index={0}
+            level={level + 1}
+            activeDrag={activeDrag}
+          />
           {node.children.map((child, i) => (
             <Fragment key={child.id}>
               <TagTreeNode
                 node={child}
                 level={level + 1}
                 collapsed={collapsed}
+                activeDrag={activeDrag}
                 toggleCollapse={toggleCollapse}
                 taskCountByTag={taskCountByTag}
                 onAddChild={onAddChild}
@@ -418,6 +472,7 @@ function TagTreeNode(props: TagTreeNodeProps) {
                 parentId={node.id}
                 index={i + 1}
                 level={level + 1}
+                activeDrag={activeDrag}
               />
             </Fragment>
           ))}
@@ -434,6 +489,7 @@ function TagRow({
   node,
   level,
   expanded,
+  activeDrag,
   toggleCollapse,
   taskCountByTag,
   onAddChild,
