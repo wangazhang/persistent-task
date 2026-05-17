@@ -3,6 +3,8 @@ import { TaskEditor } from "@/components/task/TaskEditor";
 import { useTaskStore } from "@/store/taskStore";
 import { useTagStore } from "@/store/tagStore";
 import type { Task } from "@/lib/types";
+import { openTaskEditorWindow } from "@/lib/taskEditorBridge";
+import { isTauri } from "@/lib/dataAdapter";
 import { cn } from "@/lib/utils";
 import { useDataUrlState, type DataTab } from "./useDataUrlState";
 import { TasksTable } from "./tables/TasksTable";
@@ -22,8 +24,15 @@ export function DataPage() {
   const pomodoros = useTaskStore((s) => s.pomodoros);
   const tags = useTagStore((s) => s.tags);
   const { tab, setTab } = useDataUrlState();
-
   const [editing, setEditing] = useState<Task | null>(null);
+
+  function openTask(t: Task) {
+    if (!isTauri()) {
+      setEditing(t);
+      return;
+    }
+    void openTaskEditorWindow({ taskId: t.id });
+  }
 
   const tabs: TabDef[] = [
     { key: "tasks", label: "任务", count: tasks.length },
@@ -57,16 +66,20 @@ export function DataPage() {
         ))}
       </div>
 
-      {tab === "tasks" && <TasksTable onOpenTask={(t) => setEditing(t)} />}
+      {tab === "tasks" && (
+        <TasksTable onOpenTask={openTask} />
+      )}
       {tab === "tags" && <TagsTable />}
       {tab === "pomodoros" && <PomodorosTable />}
       {tab === "events" && <EventsTable />}
 
-      <TaskEditor
-        open={!!editing}
-        task={editing}
-        onClose={() => setEditing(null)}
-      />
+      {!isTauri() && (
+        <TaskEditor
+          open={!!editing}
+          task={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 }

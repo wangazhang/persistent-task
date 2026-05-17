@@ -9,13 +9,15 @@
 pub mod commands;
 pub mod db;
 pub mod models;
+pub mod tray;
 
-use tauri::Manager;
+use tauri::{Manager, Runtime, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // 桌面端持久化路径：
             //   macOS  ~/Library/Application Support/com.persistenttask.app/
@@ -31,6 +33,10 @@ pub fn run() {
                 .map_err(|e| format!("初始化 SQLite 失败: {}", e))?;
             app.manage(state);
 
+            // 系统托盘：菜单内容由前端推送，Rust 端只负责挂载与事件转发
+            tray::build(app.handle())?;
+            install_main_close_to_hide(app.handle());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -45,11 +51,50 @@ pub fn run() {
             commands::delete_pomodoro,
             commands::clear_all,
             commands::export_db,
+            commands::export_db_to_path,
             commands::replace_db,
             commands::insert_events,
             commands::query_events,
             commands::count_events,
+            tray::open_task_detail,
+            tray::open_task_editor,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");
+}
+
+fn should_hide_instead_of_close(label: &str) -> bool {
+    label == "main"
+}
+
+fn install_main_close_to_hide<R: Runtime>(app: &tauri::AppHandle<R>) {
+    let Some(main) = app.get_webview_window("main") else {
+        return;
+    };
+    let app_handle = app.clone();
+    let label = main.label().to_string();
+
+    main.on_window_event(move |event| {
+        if let WindowEvent::CloseRequested { api, .. } = event {
+            if !should_hide_instead_of_close(&label) {
+                return;
+            }
+            api.prevent_close();
+            if let Some(window) = app_handle.get_webview_window(&label) {
+                let _ = window.hide();
+            }
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_hide_instead_of_close;
+
+    #[test]
+    fn close_request_hides_only_main_window() {
+        assert!(should_hide_instead_of_close("main"));
+        assert!(!should_hide_instead_of_close("tray-popup"));
+        assert!(!should_hide_instead_of_close("task-detail"));
+    }
 }

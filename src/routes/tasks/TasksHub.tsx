@@ -3,6 +3,8 @@ import { Plus, Search } from "lucide-react";
 import { SearchModal } from "@/components/search/SearchModal";
 import { TaskEditor } from "@/components/task/TaskEditor";
 import type { Task } from "@/lib/types";
+import { openTaskEditorWindow } from "@/lib/taskEditorBridge";
+import { isTauri } from "@/lib/dataAdapter";
 import { cn } from "@/lib/utils";
 import { TaskFilters } from "./TaskFilters";
 import { useTaskUrlState, type ViewMode } from "./useTaskUrlState";
@@ -44,14 +46,22 @@ export function TasksHub() {
   const [searchOpen, setSearchOpen] = useState(false);
 
   function openCreate(defaultDate?: string) {
-    setEditing(null);
-    setEditorDefaultDate(defaultDate);
-    setEditorOpen(true);
+    if (!isTauri()) {
+      setEditing(null);
+      setEditorDefaultDate(defaultDate);
+      setEditorOpen(true);
+      return;
+    }
+    void openTaskEditorWindow({ defaultDate });
   }
   function openEdit(t: Task) {
-    setEditing(t);
-    setEditorDefaultDate(undefined);
-    setEditorOpen(true);
+    if (!isTauri()) {
+      setEditing(t);
+      setEditorDefaultDate(undefined);
+      setEditorOpen(true);
+      return;
+    }
+    void openTaskEditorWindow({ taskId: t.id });
   }
 
   // 全局快捷键：Cmd-K / Ctrl-K 打开搜索；Cmd-N / Ctrl-N 新建任务。
@@ -190,15 +200,17 @@ export function TasksHub() {
         />
       )}
 
-      <TaskEditor
-        open={editorOpen}
-        task={editing}
-        defaultDate={editorDefaultDate}
-        onClose={() => {
-          setEditorOpen(false);
-          setEditorDefaultDate(undefined);
-        }}
-      />
+      {!isTauri() && (
+        <TaskEditor
+          open={editorOpen}
+          task={editing}
+          defaultDate={editorDefaultDate}
+          onClose={() => {
+            setEditorOpen(false);
+            setEditorDefaultDate(undefined);
+          }}
+        />
+      )}
 
       {/* 全局搜索：右上角入口 / Cmd-K 触发 */}
       <SearchModal

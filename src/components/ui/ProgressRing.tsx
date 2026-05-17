@@ -19,6 +19,8 @@ interface ProgressRingProps {
   size?: number;
   /** 环宽。默认 3.5。 */
   stroke?: number;
+  /** 是否显示中心百分比文字。默认 true；调用方想自己叠内容就传 false */
+  showCenterText?: boolean;
   className?: string;
 }
 
@@ -33,6 +35,7 @@ export function ProgressRing({
   percent,
   size = 36,
   stroke = 3.5,
+  showCenterText = true,
   className,
 }: ProgressRingProps) {
   const p = Math.max(0, Math.min(100, Math.round(percent)));
@@ -83,6 +86,7 @@ export function ProgressRing({
         fontSize={Math.max(8, Math.round(size * 0.36))}
         fontWeight={600}
         fill="currentColor"
+        opacity={showCenterText ? 1 : 0}
       >
         {p}
       </text>

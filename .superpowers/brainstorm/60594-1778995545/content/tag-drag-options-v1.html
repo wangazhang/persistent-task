@@ -1,0 +1,191 @@
+<h2>标签拖拽体验方向</h2>
+<p class="subtitle">下面是三种可选方向。重点看拖动中“会落在哪里”和“会变成什么层级”是否足够可信。</p>
+
+<style>
+  .tag-comparison {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+    margin-top: 22px;
+  }
+  .tag-option {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+  }
+  .tag-option:hover {
+    border-color: #93c5fd;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, .08);
+    transform: translateY(-1px);
+  }
+  .tag-option.selected {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .15), 0 14px 34px rgba(15, 23, 42, .1);
+  }
+  .tag-mock {
+    padding: 18px;
+    background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+    min-height: 286px;
+  }
+  .tag-row {
+    height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 8px;
+    padding: 0 10px;
+    margin: 4px 0;
+    color: #334155;
+    font-size: 12px;
+  }
+  .tag-row .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #64748b;
+  }
+  .tag-row .grip {
+    color: #94a3b8;
+    font-size: 14px;
+  }
+  .tag-row.child {
+    margin-left: 26px;
+  }
+  .tag-row.faded {
+    opacity: .32;
+  }
+  .tag-row.preview {
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    box-shadow: 0 10px 26px rgba(15, 23, 42, .16);
+    transform: translate(20px, -2px);
+  }
+  .gap-line {
+    height: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 26px;
+  }
+  .gap-line::before {
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: #2563eb;
+  }
+  .gap-line::after {
+    content: "";
+    height: 3px;
+    flex: 1;
+    border-radius: 999px;
+    background: #2563eb;
+  }
+  .placeholder {
+    height: 34px;
+    border-radius: 8px;
+    border: 1px dashed #60a5fa;
+    background: rgba(219, 234, 254, .7);
+    margin: 4px 0 4px 26px;
+  }
+  .target-box {
+    background: #eff6ff;
+    border: 1px solid #93c5fd;
+    box-shadow: inset 3px 0 0 #2563eb;
+  }
+  .target-label {
+    margin-left: auto;
+    border-radius: 999px;
+    background: #fff;
+    color: #1d4ed8;
+    font-size: 10px;
+    padding: 2px 7px;
+  }
+  .bad-target {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    box-shadow: inset 3px 0 0 #ef4444;
+    color: #991b1b;
+  }
+  .tag-body {
+    padding: 14px 16px 16px;
+  }
+  .tag-body h3 {
+    margin: 0 0 6px;
+    font-size: 15px;
+  }
+  .tag-body p {
+    margin: 0;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .recommendation {
+    margin-top: 18px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #475569;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  @media (max-width: 960px) {
+    .tag-comparison {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<div class="tag-comparison">
+  <div class="tag-option card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="tag-mock">
+      <div class="tag-row"><span class="grip">⋮⋮</span><span class="dot" style="background:#2563eb"></span>工作</div>
+      <div class="tag-row child faded"><span class="grip">⋮⋮</span><span class="dot" style="background:#22c55e"></span>日报</div>
+      <div class="gap-line"></div>
+      <div class="tag-row preview"><span class="grip">⋮⋮</span><span class="dot" style="background:#f59e0b"></span>客户跟进</div>
+      <div class="tag-row child"><span class="grip">⋮⋮</span><span class="dot" style="background:#8b5cf6"></span>会议</div>
+      <div class="tag-row"><span class="grip">⋮⋮</span><span class="dot" style="background:#ef4444"></span>个人</div>
+    </div>
+    <div class="tag-body">
+      <h3>A. 清晰落点线</h3>
+      <p>保留当前数据模型，只加强跟手预览、插入线和非法目标提示。改动最小，但树不会真正临时重排。</p>
+    </div>
+  </div>
+
+  <div class="tag-option card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="tag-mock">
+      <div class="tag-row"><span class="grip">⋮⋮</span><span class="dot" style="background:#2563eb"></span>工作</div>
+      <div class="tag-row child faded"><span class="grip">⋮⋮</span><span class="dot" style="background:#22c55e"></span>日报</div>
+      <div class="placeholder"></div>
+      <div class="tag-row preview"><span class="grip">⋮⋮</span><span class="dot" style="background:#f59e0b"></span>客户跟进</div>
+      <div class="tag-row child"><span class="grip">⋮⋮</span><span class="dot" style="background:#8b5cf6"></span>会议</div>
+      <div class="tag-row"><span class="grip">⋮⋮</span><span class="dot" style="background:#ef4444"></span>个人</div>
+    </div>
+    <div class="tag-body">
+      <h3>B. 占位式预览</h3>
+      <p>拖动时原位置淡出，目标位置出现同尺寸占位，层级缩进同步变化。更接近“松手后就长这样”。</p>
+    </div>
+  </div>
+
+  <div class="tag-option card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="tag-mock">
+      <div class="tag-row"><span class="grip">⋮⋮</span><span class="dot" style="background:#2563eb"></span>工作</div>
+      <div class="tag-row child faded"><span class="grip">⋮⋮</span><span class="dot" style="background:#22c55e"></span>日报</div>
+      <div class="tag-row target-box"><span class="grip">⋮⋮</span><span class="dot" style="background:#8b5cf6"></span>会议<span class="target-label">成为子标签</span></div>
+      <div class="tag-row preview"><span class="grip">⋮⋮</span><span class="dot" style="background:#f59e0b"></span>客户跟进</div>
+      <div class="tag-row bad-target"><span class="grip">⋮⋮</span><span class="dot" style="background:#ef4444"></span>个人<span class="target-label" style="color:#b91c1c">不可放置</span></div>
+    </div>
+    <div class="tag-body">
+      <h3>C. 语义分区反馈</h3>
+      <p>把“插入同级”和“成为子级”做成更明确的热点区，进入行主体才是子级，靠近上下边缘才是排序。</p>
+    </div>
+  </div>
+</div>
+
+<div class="recommendation">
+  我的推荐是 <strong>B + C 的组合</strong>：用同尺寸占位建立所见即所得，再把目标区语义拆清楚，避免用户分不清“插入到这里”和“放进这个标签”。如果要控制改动风险，可以先做 A，再逐步升级到 B/C。
+</div>
