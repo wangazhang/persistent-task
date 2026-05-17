@@ -571,7 +571,7 @@ function TagRow({
   const dragging = !!active;
   const activeIsSelf = active?.id === `tag-${node.id}`;
   const invalidInto = isInvalidIntoTarget(activeDrag, node.id);
-  const showInvalidInto = isOver && invalidInto && !activeIsSelf;
+  const showInvalidInto = isOver && invalidInto;
   const showIntoHighlight = isOver && !invalidInto && !activeIsSelf;
 
   return (
@@ -641,7 +641,7 @@ function TagRow({
         )}
         {showInvalidInto && (
           <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-red-600 shadow-sm">
-            不能放到自己的子标签内
+            不能放到自身或自己的子标签内
           </span>
         )}
 
