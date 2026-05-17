@@ -11,14 +11,17 @@ import {
 import { useNavigate } from "react-router-dom";
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   pointerWithin,
+  useDndContext,
   useDraggable,
   useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import { Modal } from "@/components/ui/Modal";
 import type { Tag, TagNode } from "@/lib/types";
@@ -30,6 +33,13 @@ import {
 } from "@/store/dialogStore";
 import { cn } from "@/lib/utils";
 import { PRESET_COLORS } from "@/lib/colors";
+import {
+  adjustGapIndex,
+  createActiveTagDrag,
+  isInvalidGapTarget,
+  isInvalidIntoTarget,
+  type ActiveTagDrag,
+} from "./tagDragHelpers";
 
 interface EditorState {
   open: boolean;
@@ -48,6 +58,12 @@ type DropData =
   | { kind: "gap"; parentId: string | null; index: number };
 
 const ROOT_KEY = "__root__";
+const TAG_INDENT_BASE = 16;
+const TAG_INDENT_STEP = 24;
+
+function tagIndentStyle(level: number) {
+  return { paddingLeft: `${TAG_INDENT_BASE + level * TAG_INDENT_STEP}px` };
+}
 
 export function TagsPage() {
   const navigate = useNavigate();
@@ -86,6 +102,11 @@ export function TagsPage() {
       return next;
     });
   }, []);
+  const [activeDrag, setActiveDrag] = useState<ActiveTagDrag | null>(null);
+
+  function clearActiveDrag() {
+    setActiveDrag(null);
+  }
 
   function openNew(parentId: string | null) {
     setEditor({ open: true, editing: null, parentId });
@@ -157,41 +178,57 @@ export function TagsPage() {
     useSensor(KeyboardSensor)
   );
 
-  function handleDragEnd(e: DragEndEvent) {
+  function handleDragStart(e: DragStartEvent) {
     const activeData = e.active.data.current as DragData | undefined;
-    const overData = e.over?.data.current as DropData | undefined;
-    if (!activeData || activeData.kind !== "tag" || !overData) return;
-    const movedId = activeData.tagId;
-
-    if (overData.kind === "into") {
-      // 拖到节点行 → 变成该节点的最后一个子节点
-      if (overData.tagId === movedId) return;
-      moveTag(movedId, overData.tagId, Number.MAX_SAFE_INTEGER);
-      // 自动展开收纳节点
-      setCollapsed((prev) => {
-        const next = new Set(prev);
-        next.delete(overData.tagId);
-        return next;
-      });
+    if (!activeData || activeData.kind !== "tag") {
+      clearActiveDrag();
       return;
     }
 
-    if (overData.kind === "gap") {
-      const { parentId, index } = overData;
-      const target = tags.find((t) => t.id === movedId);
-      if (!target) return;
+    const tag = tags.find((t) => t.id === activeData.tagId);
+    if (!tag) {
+      clearActiveDrag();
+      return;
+    }
 
-      // 同 parent 调整目标 index：gap 的 index 是按"含 active 的完整列表"计的，
-      // 而 moveTag 的 newIndex 语义是相对去掉 active 后的列表。
-      let newIdx = index;
-      if (target.parentId === parentId) {
-        const siblings = tags
-          .filter((t) => t.parentId === parentId)
-          .sort((a, b) => a.order - b.order);
-        const oldIndex = siblings.findIndex((t) => t.id === movedId);
-        if (oldIndex >= 0 && oldIndex < index) newIdx = index - 1;
+    setActiveDrag(createActiveTagDrag(tag, collectDescendants(tag.id)));
+  }
+
+  function handleDragEnd(e: DragEndEvent) {
+    try {
+      const activeData = e.active.data.current as DragData | undefined;
+      const overData = e.over?.data.current as DropData | undefined;
+      if (!activeData || activeData.kind !== "tag" || !overData) return;
+      const movedId = activeData.tagId;
+
+      if (overData.kind === "into") {
+        // 拖到节点行 → 变成该节点的最后一个子节点
+        if (overData.tagId === movedId) return;
+        if (isInvalidIntoTarget(activeDrag, overData.tagId)) return;
+
+        const moved = moveTag(movedId, overData.tagId, Number.MAX_SAFE_INTEGER);
+        if (!moved) return;
+
+        // 自动展开收纳节点
+        setCollapsed((prev) => {
+          const next = new Set(prev);
+          next.delete(overData.tagId);
+          return next;
+        });
+        return;
       }
-      moveTag(movedId, parentId, newIdx);
+
+      if (overData.kind === "gap") {
+        const { parentId, index } = overData;
+        if (isInvalidGapTarget(activeDrag, parentId)) return;
+
+        const adjusted = adjustGapIndex(tags, movedId, parentId, index);
+        if (!adjusted) return;
+
+        moveTag(adjusted.movedId, adjusted.parentId, adjusted.newIndex);
+      }
+    } finally {
+      clearActiveDrag();
     }
   }
 
@@ -218,17 +255,25 @@ export function TagsPage() {
         <DndContext
           sensors={sensors}
           collisionDetection={pointerWithin}
+          onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
+          onDragCancel={clearActiveDrag}
         >
           <div className="card overflow-hidden">
             {/* 顶部第一个 gap：插到根列表最前 */}
-            <GapDrop parentId={null} index={0} level={0} />
+            <GapDrop
+              parentId={null}
+              index={0}
+              level={0}
+              activeDrag={activeDrag}
+            />
             {tree.map((node, i) => (
               <Fragment key={node.id}>
                 <TagTreeNode
                   node={node}
                   level={0}
                   collapsed={collapsed}
+                  activeDrag={activeDrag}
                   toggleCollapse={toggleCollapse}
                   taskCountByTag={taskCountByTag}
                   onAddChild={openNew}
@@ -236,10 +281,23 @@ export function TagsPage() {
                   onDelete={deleteTag}
                   onLocate={locateTasks}
                 />
-                <GapDrop parentId={null} index={i + 1} level={0} />
+                <GapDrop
+                  parentId={null}
+                  index={i + 1}
+                  level={0}
+                  activeDrag={activeDrag}
+                />
               </Fragment>
             ))}
           </div>
+          <DragOverlay dropAnimation={null}>
+            {activeDrag ? (
+              <TagDragPreview
+                tag={activeDrag.tag}
+                count={taskCountByTag.get(activeDrag.tagId) ?? 0}
+              />
+            ) : null}
+          </DragOverlay>
         </DndContext>
       )}
 
@@ -315,42 +373,76 @@ export function TagsPage() {
 /* ================================================================
  * 行间放置区：用于同级排序
  * ================================================================ */
+function TagDragPreview({ tag, count }: { tag: Tag; count: number }) {
+  return (
+    <div className="pointer-events-none flex min-w-64 max-w-sm items-center gap-2 rounded-lg border border-ink-200 bg-white px-4 py-2.5 shadow-card">
+      <GripVertical className="h-4 w-4 text-ink-300" />
+      <span
+        className="inline-block h-2.5 w-2.5 rounded-full"
+        style={{ backgroundColor: tag.color }}
+      />
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-800">
+        {tag.name}
+      </span>
+      <span className="shrink-0 text-xs text-ink-400">{count} 个任务</span>
+    </div>
+  );
+}
+
+function TagDropPlaceholder({
+  level,
+  invalid = false,
+}: {
+  level: number;
+  invalid?: boolean;
+}) {
+  return (
+    <div style={tagIndentStyle(level)} className="py-1">
+      <div
+        className={cn(
+          "h-8 rounded-lg border border-dashed transition-colors",
+          invalid
+            ? "border-red-300 bg-red-50"
+            : "border-brand-300 bg-brand-50"
+        )}
+      />
+    </div>
+  );
+}
+
 function GapDrop({
   parentId,
   index,
   level,
+  activeDrag,
 }: {
   parentId: string | null;
   index: number;
   level: number;
+  activeDrag: ActiveTagDrag | null;
 }) {
   const id = `gap-${parentId ?? ROOT_KEY}-${index}`;
   const data: DropData = { kind: "gap", parentId, index };
   const { setNodeRef, isOver, active } = useDroppable({ id, data });
   const dragging = !!active;
+  const invalid = isInvalidGapTarget(activeDrag, parentId);
+
   return (
     <div
       ref={setNodeRef}
-      style={{ paddingLeft: `${16 + level * 24}px` }}
       className={cn(
-        "transition-all",
-        dragging
-          ? isOver
-            ? "h-7"
-            : "h-2"
-          : "h-0"
+        "overflow-hidden transition-all",
+        dragging ? (isOver ? "h-10" : "h-2") : "h-0"
       )}
     >
-      {dragging && (
-        <div
-          className={cn(
-            "h-full rounded-full transition-colors",
-            isOver
-              ? "bg-brand-300"
-              : "bg-ink-200/60"
-          )}
-        />
-      )}
+      {dragging &&
+        (isOver ? (
+          <TagDropPlaceholder level={level} invalid={invalid} />
+        ) : (
+          <div style={tagIndentStyle(level)} className="h-full">
+            <div className="h-full rounded-full bg-ink-200/50" />
+          </div>
+        ))}
     </div>
   );
 }
@@ -362,6 +454,7 @@ interface TagTreeNodeProps {
   node: TagNode;
   level: number;
   collapsed: Set<string>;
+  activeDrag: ActiveTagDrag | null;
   toggleCollapse: (id: string) => void;
   taskCountByTag: Map<string, number>;
   onAddChild: (parentId: string | null) => void;
@@ -370,11 +463,18 @@ interface TagTreeNodeProps {
   onLocate: (tagId: string) => void;
 }
 
+interface IntoDropState {
+  dragging: boolean;
+  showIntoHighlight: boolean;
+  showInvalidInto: boolean;
+}
+
 function TagTreeNode(props: TagTreeNodeProps) {
   const {
     node,
     level,
     collapsed,
+    activeDrag,
     toggleCollapse,
     taskCountByTag,
     onAddChild,
@@ -384,6 +484,22 @@ function TagTreeNode(props: TagTreeNodeProps) {
   } = props;
   const expanded = !collapsed.has(node.id);
   const hasChildren = node.children.length > 0;
+  const { active, over } = useDndContext();
+  const isOverInto = over?.id === `into-${node.id}`;
+  const activeIsSelf = active?.id === `tag-${node.id}`;
+  const invalidInto = isInvalidIntoTarget(activeDrag, node.id);
+  const intoDropState: IntoDropState = {
+    dragging: !!active,
+    showIntoHighlight: isOverInto && !invalidInto && !activeIsSelf,
+    showInvalidInto: isOverInto && invalidInto,
+  };
+  const intoPlaceholder =
+    intoDropState.showIntoHighlight || intoDropState.showInvalidInto ? (
+      <TagDropPlaceholder
+        level={level + 1}
+        invalid={intoDropState.showInvalidInto}
+      />
+    ) : null;
 
   return (
     <div>
@@ -391,6 +507,7 @@ function TagTreeNode(props: TagTreeNodeProps) {
         node={node}
         level={level}
         expanded={expanded}
+        intoDropState={intoDropState}
         toggleCollapse={toggleCollapse}
         taskCountByTag={taskCountByTag}
         onAddChild={onAddChild}
@@ -398,15 +515,22 @@ function TagTreeNode(props: TagTreeNodeProps) {
         onDelete={onDelete}
         onLocate={onLocate}
       />
+      {(!hasChildren || !expanded) && intoPlaceholder}
       {hasChildren && expanded && (
         <div>
-          <GapDrop parentId={node.id} index={0} level={level + 1} />
+          <GapDrop
+            parentId={node.id}
+            index={0}
+            level={level + 1}
+            activeDrag={activeDrag}
+          />
           {node.children.map((child, i) => (
             <Fragment key={child.id}>
               <TagTreeNode
                 node={child}
                 level={level + 1}
                 collapsed={collapsed}
+                activeDrag={activeDrag}
                 toggleCollapse={toggleCollapse}
                 taskCountByTag={taskCountByTag}
                 onAddChild={onAddChild}
@@ -418,9 +542,11 @@ function TagTreeNode(props: TagTreeNodeProps) {
                 parentId={node.id}
                 index={i + 1}
                 level={level + 1}
+                activeDrag={activeDrag}
               />
             </Fragment>
           ))}
+          {intoPlaceholder}
         </div>
       )}
     </div>
@@ -434,13 +560,17 @@ function TagRow({
   node,
   level,
   expanded,
+  intoDropState,
   toggleCollapse,
   taskCountByTag,
   onAddChild,
   onEdit,
   onDelete,
   onLocate,
-}: Omit<TagTreeNodeProps, "collapsed"> & { expanded: boolean }) {
+}: Omit<TagTreeNodeProps, "collapsed" | "activeDrag"> & {
+  expanded: boolean;
+  intoDropState: IntoDropState;
+}) {
   const hasChildren = node.children.length > 0;
   const count = taskCountByTag.get(node.id) ?? 0;
 
@@ -454,8 +584,6 @@ function TagRow({
   } = useDraggable({ id: `tag-${node.id}`, data: dragData });
   const {
     setNodeRef: setDropRef,
-    isOver,
-    active,
   } = useDroppable({ id: `into-${node.id}`, data: dropData });
 
   const setRefs = useCallback(
@@ -466,108 +594,115 @@ function TagRow({
     [setDragRef, setDropRef]
   );
 
-  // 自身或自身后代不能成为放置目标（但让其它判定交给 store；这里只控制视觉提示）
-  const activeIsSelf = active?.id === `tag-${node.id}`;
-  const showIntoHighlight = isOver && !activeIsSelf;
+  const { dragging, showInvalidInto, showIntoHighlight } = intoDropState;
 
   return (
-    <div
-      ref={setRefs}
-      className={cn(
-        "group relative flex items-center gap-2 px-4 py-2.5 transition-colors",
-        showIntoHighlight
-          ? "bg-brand-100"
-          : "hover:bg-ink-50",
-        isDragging && "opacity-40"
-      )}
-      style={{ paddingLeft: `${16 + level * 24}px` }}
-    >
-      {/* 拖拽手柄 */}
-      <button
-        type="button"
-        {...listeners}
-        {...attributes}
-        title="拖动以重排或改变层级"
-        className="cursor-grab text-ink-300 hover:text-ink-500 active:cursor-grabbing"
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-
-      {/* 折叠箭头 */}
-      <button
-        type="button"
-        className="text-ink-400"
-        onClick={() => toggleCollapse(node.id)}
-      >
-        {hasChildren ? (
-          expanded ? (
-            <ChevronDown className="h-4 w-4" />
-          ) : (
-            <ChevronRight className="h-4 w-4" />
-          )
-        ) : (
-          <span className="inline-block h-4 w-4" />
+    <div>
+      <div
+        ref={setRefs}
+        className={cn(
+          "group relative flex items-center gap-2 px-4 py-2.5 transition-colors",
+          showIntoHighlight
+            ? "bg-brand-50 ring-1 ring-inset ring-brand-200"
+            : showInvalidInto
+              ? "bg-red-50 ring-1 ring-inset ring-red-200"
+              : "hover:bg-ink-50",
+          isDragging && "opacity-30"
         )}
-      </button>
-
-      {/* 颜色点 */}
-      <span
-        className="inline-block h-2.5 w-2.5 rounded-full"
-        style={{ backgroundColor: node.color }}
-      />
-
-      {/* 名字 + 任务数：可点击跳到任务列表 */}
-      <button
-        type="button"
-        onClick={() => onLocate(node.id)}
-        title="查看此标签下的全部任务"
-        className="-ml-1 flex items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-white"
+        style={tagIndentStyle(level)}
       >
-        <span className="text-sm font-medium text-ink-800">{node.name}</span>
-        <span className="text-xs text-ink-400">{count} 个任务</span>
-      </button>
-
-      {/* "拖到此处会成为子节点"的提示 */}
-      {showIntoHighlight && (
-        <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-brand-700 shadow-sm">
-          放到此处 → 成为「{node.name}」的子标签
-        </span>
-      )}
-
-      {/* 行尾 hover 操作 */}
-      <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        {/* 拖拽手柄 */}
         <button
           type="button"
-          title="查看任务"
+          {...listeners}
+          {...attributes}
+          title="拖动以重排或改变层级"
+          className="cursor-grab text-ink-300 hover:text-ink-500 active:cursor-grabbing"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+
+        {/* 折叠箭头 */}
+        <button
+          type="button"
+          className="text-ink-400"
+          onClick={() => toggleCollapse(node.id)}
+        >
+          {hasChildren ? (
+            expanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )
+          ) : (
+            <span className="inline-block h-4 w-4" />
+          )}
+        </button>
+
+        {/* 颜色点 */}
+        <span
+          className="inline-block h-2.5 w-2.5 rounded-full"
+          style={{ backgroundColor: node.color }}
+        />
+
+        {/* 名字 + 任务数：可点击跳到任务列表 */}
+        <button
+          type="button"
           onClick={() => onLocate(node.id)}
-          className="rounded p-1 text-ink-400 hover:bg-brand-50 hover:text-brand-600"
+          title="查看此标签下的全部任务"
+          className="-ml-1 flex items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-white"
         >
-          <ListFilter className="h-3.5 w-3.5" />
+          <span className="text-sm font-medium text-ink-800">{node.name}</span>
+          <span className="text-xs text-ink-400">{count} 个任务</span>
         </button>
-        <button
-          type="button"
-          title="新建子标签"
-          onClick={() => onAddChild(node.id)}
-          className="rounded p-1 text-ink-400 hover:bg-brand-50 hover:text-brand-600"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          title="编辑"
-          onClick={() => onEdit(node)}
-          className="rounded p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          title="删除"
-          onClick={() => onDelete(node)}
-          className="rounded p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+
+        {showIntoHighlight && (
+          <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-brand-700 shadow-sm">
+            将成为「{node.name}」的子标签
+          </span>
+        )}
+        {showInvalidInto && (
+          <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-red-600 shadow-sm">
+            不能放到自身或自己的子标签内
+          </span>
+        )}
+
+        {!dragging && (
+          <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              type="button"
+              title="查看任务"
+              onClick={() => onLocate(node.id)}
+              className="rounded p-1 text-ink-400 hover:bg-brand-50 hover:text-brand-600"
+            >
+              <ListFilter className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              title="新建子标签"
+              onClick={() => onAddChild(node.id)}
+              className="rounded p-1 text-ink-400 hover:bg-brand-50 hover:text-brand-600"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              title="编辑"
+              onClick={() => onEdit(node)}
+              className="rounded p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              title="删除"
+              onClick={() => onDelete(node)}
+              className="rounded p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
