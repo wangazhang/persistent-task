@@ -49,6 +49,9 @@ const active = createActiveTagDrag(tags[0], [
   "grandchild-a",
 ]);
 
+eq("createActiveTagDrag preserves tag id", active.tagId, "root-a");
+eq("createActiveTagDrag preserves tag", active.tag, tags[0]);
+
 eq(
   "createActiveTagDrag caches blocked ids",
   [...active.descendantIds].sort(),
@@ -60,7 +63,9 @@ eq("self is invalid into target", isInvalidIntoTarget(active, "root-a"), true);
 eq("descendant is invalid into target", isInvalidIntoTarget(active, "child-a"), true);
 eq("unrelated tag is valid into target", isInvalidIntoTarget(active, "root-b"), false);
 
+eq("null active allows tag gap", isInvalidGapTarget(null, "root-a"), false);
 eq("root gap is valid", isInvalidGapTarget(active, null), false);
+eq("self parent gap is invalid", isInvalidGapTarget(active, "root-a"), true);
 eq("descendant parent gap is invalid", isInvalidGapTarget(active, "child-a"), true);
 eq("unrelated parent gap is valid", isInvalidGapTarget(active, "root-b"), false);
 

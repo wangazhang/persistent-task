@@ -36,7 +36,10 @@ export function isInvalidGapTarget(
   activeDrag: ActiveTagDrag | null,
   parentId: string | null
 ): boolean {
-  return activeDrag ? parentId !== null && activeDrag.descendantIds.has(parentId) : false;
+  return activeDrag
+    ? parentId !== null &&
+        (activeDrag.tagId === parentId || activeDrag.descendantIds.has(parentId))
+    : false;
 }
 
 export function adjustGapIndex(
