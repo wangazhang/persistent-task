@@ -289,6 +289,14 @@ export function TagsPage() {
               </Fragment>
             ))}
           </div>
+          <DragOverlay dropAnimation={null}>
+            {activeDrag ? (
+              <TagDragPreview
+                tag={activeDrag.tag}
+                count={taskCountByTag.get(activeDrag.tagId) ?? 0}
+              />
+            ) : null}
+          </DragOverlay>
         </DndContext>
       )}
 
@@ -364,6 +372,22 @@ export function TagsPage() {
 /* ================================================================
  * 行间放置区：用于同级排序
  * ================================================================ */
+function TagDragPreview({ tag, count }: { tag: Tag; count: number }) {
+  return (
+    <div className="pointer-events-none flex min-w-64 max-w-sm items-center gap-2 rounded-lg border border-ink-200 bg-white px-4 py-2.5 shadow-card">
+      <GripVertical className="h-4 w-4 text-ink-300" />
+      <span
+        className="inline-block h-2.5 w-2.5 rounded-full"
+        style={{ backgroundColor: tag.color }}
+      />
+      <span className="truncate text-sm font-medium text-ink-800">
+        {tag.name}
+      </span>
+      <span className="shrink-0 text-xs text-ink-400">{count} 个任务</span>
+    </div>
+  );
+}
+
 function TagDropPlaceholder({
   level,
   invalid = false,
