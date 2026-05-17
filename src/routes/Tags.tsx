@@ -57,6 +57,12 @@ type DropData =
   | { kind: "gap"; parentId: string | null; index: number };
 
 const ROOT_KEY = "__root__";
+const TAG_INDENT_BASE = 16;
+const TAG_INDENT_STEP = 24;
+
+function tagIndentStyle(level: number) {
+  return { paddingLeft: `${TAG_INDENT_BASE + level * TAG_INDENT_STEP}px` };
+}
 
 export function TagsPage() {
   const navigate = useNavigate();
@@ -358,6 +364,27 @@ export function TagsPage() {
 /* ================================================================
  * 行间放置区：用于同级排序
  * ================================================================ */
+function TagDropPlaceholder({
+  level,
+  invalid = false,
+}: {
+  level: number;
+  invalid?: boolean;
+}) {
+  return (
+    <div style={tagIndentStyle(level)} className="py-1">
+      <div
+        className={cn(
+          "h-8 rounded-lg border border-dashed transition-colors",
+          invalid
+            ? "border-red-300 bg-red-50"
+            : "border-brand-300 bg-brand-50"
+        )}
+      />
+    </div>
+  );
+}
+
 function GapDrop({
   parentId,
   index,
@@ -373,29 +400,24 @@ function GapDrop({
   const data: DropData = { kind: "gap", parentId, index };
   const { setNodeRef, isOver, active } = useDroppable({ id, data });
   const dragging = !!active;
+  const invalid = isInvalidGapTarget(activeDrag, parentId);
+
   return (
     <div
       ref={setNodeRef}
-      style={{ paddingLeft: `${16 + level * 24}px` }}
       className={cn(
-        "transition-all",
-        dragging
-          ? isOver
-            ? "h-7"
-            : "h-2"
-          : "h-0"
+        "overflow-hidden transition-all",
+        dragging ? (isOver ? "h-10" : "h-2") : "h-0"
       )}
     >
-      {dragging && (
-        <div
-          className={cn(
-            "h-full rounded-full transition-colors",
-            isOver
-              ? "bg-brand-300"
-              : "bg-ink-200/60"
-          )}
-        />
-      )}
+      {dragging &&
+        (isOver ? (
+          <TagDropPlaceholder level={level} invalid={invalid} />
+        ) : (
+          <div style={tagIndentStyle(level)} className="h-full">
+            <div className="h-full rounded-full bg-ink-200/50" />
+          </div>
+        ))}
     </div>
   );
 }
@@ -522,109 +544,127 @@ function TagRow({
     [setDragRef, setDropRef]
   );
 
-  // 自身或自身后代不能成为放置目标（但让其它判定交给 store；这里只控制视觉提示）
+  const dragging = !!active;
   const activeIsSelf = active?.id === `tag-${node.id}`;
-  const showIntoHighlight = isOver && !activeIsSelf;
+  const invalidInto = isInvalidIntoTarget(activeDrag, node.id);
+  const showInvalidInto = isOver && invalidInto && !activeIsSelf;
+  const showIntoHighlight = isOver && !invalidInto;
 
   return (
-    <div
-      ref={setRefs}
-      className={cn(
-        "group relative flex items-center gap-2 px-4 py-2.5 transition-colors",
-        showIntoHighlight
-          ? "bg-brand-100"
-          : "hover:bg-ink-50",
-        isDragging && "opacity-40"
-      )}
-      style={{ paddingLeft: `${16 + level * 24}px` }}
-    >
-      {/* 拖拽手柄 */}
-      <button
-        type="button"
-        {...listeners}
-        {...attributes}
-        title="拖动以重排或改变层级"
-        className="cursor-grab text-ink-300 hover:text-ink-500 active:cursor-grabbing"
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-
-      {/* 折叠箭头 */}
-      <button
-        type="button"
-        className="text-ink-400"
-        onClick={() => toggleCollapse(node.id)}
-      >
-        {hasChildren ? (
-          expanded ? (
-            <ChevronDown className="h-4 w-4" />
-          ) : (
-            <ChevronRight className="h-4 w-4" />
-          )
-        ) : (
-          <span className="inline-block h-4 w-4" />
+    <div>
+      <div
+        ref={setRefs}
+        className={cn(
+          "group relative flex items-center gap-2 px-4 py-2.5 transition-colors",
+          showIntoHighlight
+            ? "bg-brand-50 ring-1 ring-inset ring-brand-200"
+            : showInvalidInto
+              ? "bg-red-50 ring-1 ring-inset ring-red-200"
+              : "hover:bg-ink-50",
+          isDragging && "opacity-30"
         )}
-      </button>
-
-      {/* 颜色点 */}
-      <span
-        className="inline-block h-2.5 w-2.5 rounded-full"
-        style={{ backgroundColor: node.color }}
-      />
-
-      {/* 名字 + 任务数：可点击跳到任务列表 */}
-      <button
-        type="button"
-        onClick={() => onLocate(node.id)}
-        title="查看此标签下的全部任务"
-        className="-ml-1 flex items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-white"
+        style={tagIndentStyle(level)}
       >
-        <span className="text-sm font-medium text-ink-800">{node.name}</span>
-        <span className="text-xs text-ink-400">{count} 个任务</span>
-      </button>
-
-      {/* "拖到此处会成为子节点"的提示 */}
-      {showIntoHighlight && (
-        <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-brand-700 shadow-sm">
-          放到此处 → 成为「{node.name}」的子标签
-        </span>
-      )}
-
-      {/* 行尾 hover 操作 */}
-      <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        {/* 拖拽手柄 */}
         <button
           type="button"
-          title="查看任务"
+          {...listeners}
+          {...attributes}
+          title="拖动以重排或改变层级"
+          className="cursor-grab text-ink-300 hover:text-ink-500 active:cursor-grabbing"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+
+        {/* 折叠箭头 */}
+        <button
+          type="button"
+          className="text-ink-400"
+          onClick={() => toggleCollapse(node.id)}
+        >
+          {hasChildren ? (
+            expanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )
+          ) : (
+            <span className="inline-block h-4 w-4" />
+          )}
+        </button>
+
+        {/* 颜色点 */}
+        <span
+          className="inline-block h-2.5 w-2.5 rounded-full"
+          style={{ backgroundColor: node.color }}
+        />
+
+        {/* 名字 + 任务数：可点击跳到任务列表 */}
+        <button
+          type="button"
           onClick={() => onLocate(node.id)}
-          className="rounded p-1 text-ink-400 hover:bg-brand-50 hover:text-brand-600"
+          title="查看此标签下的全部任务"
+          className="-ml-1 flex items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-white"
         >
-          <ListFilter className="h-3.5 w-3.5" />
+          <span className="text-sm font-medium text-ink-800">{node.name}</span>
+          <span className="text-xs text-ink-400">{count} 个任务</span>
         </button>
-        <button
-          type="button"
-          title="新建子标签"
-          onClick={() => onAddChild(node.id)}
-          className="rounded p-1 text-ink-400 hover:bg-brand-50 hover:text-brand-600"
+
+        {showIntoHighlight && (
+          <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-brand-700 shadow-sm">
+            将成为「{node.name}」的子标签
+          </span>
+        )}
+        {showInvalidInto && (
+          <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-red-600 shadow-sm">
+            不能放到自己的子标签内
+          </span>
+        )}
+
+        {/* 行尾 hover 操作 */}
+        <div
+          className={cn(
+            "ml-auto flex items-center gap-1 opacity-0 transition-opacity",
+            dragging ? "pointer-events-none" : "group-hover:opacity-100"
+          )}
         >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          title="编辑"
-          onClick={() => onEdit(node)}
-          className="rounded p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          title="删除"
-          onClick={() => onDelete(node)}
-          className="rounded p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+          <button
+            type="button"
+            title="查看任务"
+            onClick={() => onLocate(node.id)}
+            className="rounded p-1 text-ink-400 hover:bg-brand-50 hover:text-brand-600"
+          >
+            <ListFilter className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title="新建子标签"
+            onClick={() => onAddChild(node.id)}
+            className="rounded p-1 text-ink-400 hover:bg-brand-50 hover:text-brand-600"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title="编辑"
+            onClick={() => onEdit(node)}
+            className="rounded p-1 text-ink-400 hover:bg-ink-100 hover:text-ink-700"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title="删除"
+            onClick={() => onDelete(node)}
+            className="rounded p-1 text-ink-400 hover:bg-red-50 hover:text-red-600"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
+
+      {showIntoHighlight && <TagDropPlaceholder level={level + 1} />}
+      {showInvalidInto && <TagDropPlaceholder level={level + 1} invalid />}
     </div>
   );
 }
