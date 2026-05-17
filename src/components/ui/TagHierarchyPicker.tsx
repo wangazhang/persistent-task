@@ -22,6 +22,8 @@ type MultiProps = {
 type Props = (SingleProps | MultiProps) & {
   /** 是否在 chip 旁显示"× 个任务"等附加信息（外部计算）*/
   countByTagId?: Map<string, number>;
+  /** 独立窗口等无本地 tag store 的场景可直接传入标签快照 */
+  tagsOverride?: Tag[];
   /** 自定义类名 */
   className?: string;
 };
@@ -41,9 +43,13 @@ type Props = (SingleProps | MultiProps) & {
  *   （单选 = 自动包含子标签的语义由调用方决定，比如 collectDescendants）。
  */
 export function TagHierarchyPicker(props: Props) {
-  const tags = useTagStore((s) => s.tags);
+  const storeTags = useTagStore((s) => s.tags);
   const buildTree = useTagStore((s) => s.buildTree);
-  const tree = useMemo(() => buildTree(), [tags, buildTree]);
+  const tags = props.tagsOverride ?? storeTags;
+  const tree = useMemo(
+    () => (props.tagsOverride ? buildTagTree(props.tagsOverride) : buildTree()),
+    [props.tagsOverride, buildTree]
+  );
   const tagsById = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags]);
 
   // path：当前正在浏览的祖先链。空数组 = 顶层
@@ -227,4 +233,23 @@ export function TagHierarchyPicker(props: Props) {
       </div>
     </div>
   );
+}
+
+function buildTagTree(tags: Tag[]): TagNode[] {
+  const map = new Map<string, TagNode>();
+  tags.forEach((t) => map.set(t.id, { ...t, children: [] }));
+  const roots: TagNode[] = [];
+  map.forEach((node) => {
+    if (node.parentId && map.has(node.parentId)) {
+      map.get(node.parentId)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+  const sortRecursive = (nodes: TagNode[]) => {
+    nodes.sort((a, b) => a.order - b.order);
+    nodes.forEach((n) => sortRecursive(n.children));
+  };
+  sortRecursive(roots);
+  return roots;
 }

@@ -17,7 +17,7 @@
 import initSqlJs from "sql.js/dist/sql-wasm.js";
 import type { SqlJsStatic } from "sql.js";
 import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
-import { getAdapter } from "./dataAdapter";
+import { getAdapter, isTauri } from "./dataAdapter";
 import { alert, confirm } from "@/store/dialogStore";
 
 const SQLITE_MAGIC = "SQLite format 3\0";
@@ -38,25 +38,55 @@ function formatTs(d: Date): string {
   );
 }
 
-/** 触发浏览器下载，文件名带时间戳，避免覆盖 */
+/**
+ * 触发导出。
+ *
+ * - Tauri 桌面端：tauri-plugin-dialog 弹原生保存对话框拿 path，
+ *   再调 Rust 命令直接 fs::copy 数据库文件到 path。
+ *   不能用浏览器的 `<a download>`——macOS WKWebView 默认没有 WKDownloadDelegate，
+ *   programmatic 点击 blob URL 是 silent no-op。
+ * - Web 端：保留 blob URL + `<a download>` 方案。
+ */
 export async function exportDbToFile(): Promise<void> {
+  const defaultName = `persistent-task-${formatTs(new Date())}.sqlite`;
+
+  if (isTauri()) {
+    const [{ save }, { invoke }] = await Promise.all([
+      import("@tauri-apps/plugin-dialog"),
+      import("@tauri-apps/api/core"),
+    ]);
+    let path: string | null;
+    try {
+      path = await save({
+        defaultPath: defaultName,
+        filters: [{ name: "SQLite", extensions: ["sqlite", "db"] }],
+      });
+    } catch (e) {
+      await alert({ title: "导出失败", message: `打开保存对话框失败：${String(e)}` });
+      return;
+    }
+    if (!path) return; // 用户取消
+    try {
+      await invoke<void>("export_db_to_path", { path });
+    } catch (e) {
+      await alert({ title: "导出失败", message: `写出文件失败：${String(e)}` });
+    }
+    return;
+  }
+
+  // Web 端
   let bytes: Uint8Array;
   try {
     bytes = await getAdapter().exportDb();
   } catch (e) {
-    await alert({
-      title: "导出失败",
-      message: `读取数据库失败：${String(e)}`,
-    });
+    await alert({ title: "导出失败", message: `读取数据库失败：${String(e)}` });
     return;
   }
-  const blob = new Blob([bytes.slice().buffer], {
-    type: "application/x-sqlite3",
-  });
+  const blob = new Blob([bytes.slice().buffer], { type: "application/x-sqlite3" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `persistent-task-${formatTs(new Date())}.sqlite`;
+  a.download = defaultName;
   document.body.appendChild(a);
   a.click();
   a.remove();

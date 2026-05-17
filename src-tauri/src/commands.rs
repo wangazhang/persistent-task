@@ -381,6 +381,18 @@ pub fn export_db(state: State<AppState>) -> Result<Vec<u8>, String> {
     std::fs::read(&state.db_path).map_err(to_err)
 }
 
+/// 直接把数据库文件复制到指定路径。
+///
+/// 桌面端 webview 不支持 `<a download>`，由前端通过 tauri-plugin-dialog 弹
+/// 原生保存对话框拿到 path 后调本命令，避免把整库走 JSON IPC 序列化两次。
+#[tauri::command]
+pub fn export_db_to_path(state: State<AppState>, path: String) -> Result<(), String> {
+    let _guard = state.conn.lock();
+    std::fs::copy(&state.db_path, &path)
+        .map(|_| ())
+        .map_err(|e| format!("写出文件失败：{}", e))
+}
+
 /// 用传入的 SQLite 字节替换当前数据库。
 ///
 /// 流程：

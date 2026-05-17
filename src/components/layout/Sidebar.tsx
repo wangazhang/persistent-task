@@ -48,7 +48,7 @@ export function Sidebar() {
         <img
           src={logoUrl}
           alt="持续任务"
-          className="h-8 w-8 rounded-lg shadow-soft"
+          className="h-12 w-12 rounded-lg shadow-soft"
         />
         <div>
           <div className="text-sm font-semibold text-ink-800">持续任务</div>

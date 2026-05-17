@@ -13,6 +13,7 @@ import { usePomodoroStore } from "@/store/pomodoroStore";
 import { usePastReviewStore } from "@/store/pastReviewStore";
 import { isPastUnfinished } from "@/lib/pastReview";
 import { isoDate } from "@/lib/utils";
+import { TrayMainBridge } from "@/components/TrayMainBridge";
 
 function checkAndAutoPrompt() {
   const past = usePastReviewStore.getState();
@@ -95,6 +96,7 @@ export default function App() {
         </Route>
       </Routes>
       <ConfirmDialog />
+      <TrayMainBridge />
     </>
   );
 }

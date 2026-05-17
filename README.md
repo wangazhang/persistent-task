@@ -1,18 +1,19 @@
-# 持续任务 · Persistent Task
+# [](https://)持续任务 · Persistent Task
 
 桌面端任务管理系统：每日任务、跨日贯穿、拖拽优先级、番茄时钟、标签树、统计面板。
 
 ## 功能清单
 
-| # | 需求 | UI 状态 | 数据状态 |
-| - | - | - | - |
+
+| # | 需求                                   | UI 状态   | 数据状态     |
+| - | -------------------------------------- | --------- | ------------ |
 | 1 | 记录每日任务 + 完成情况 + 关联外部文档 | ✅ 已实现 | LocalStorage |
-| 2 | 任务简述 | ✅ 已实现 | LocalStorage |
-| 3 | 任务可贯穿多日，每天都能看到 | ✅ 已实现 | LocalStorage |
-| 4 | 拖动改变任务优先级（同日内排序） | ✅ 已实现 | LocalStorage |
-| 5 | 任务进入番茄时钟（25/5/15、绑定任务） | ✅ 已实现 | LocalStorage |
-| 6 | 标签树 CRUD + 按标签查找（含子标签） | ✅ 已实现 | LocalStorage |
-| 7 | 多维度统计（年月日 / 标签 / 状态） | ✅ 已实现 | LocalStorage |
+| 2 | 任务简述                               | ✅ 已实现 | LocalStorage |
+| 3 | 任务可贯穿多日，每天都能看到           | ✅ 已实现 | LocalStorage |
+| 4 | 拖动改变任务优先级（同日内排序）       | ✅ 已实现 | LocalStorage |
+| 5 | 任务进入番茄时钟（25/5/15、绑定任务）  | ✅ 已实现 | LocalStorage |
+| 6 | 标签树 CRUD + 按标签查找（含子标签）   | ✅ 已实现 | LocalStorage |
+| 7 | 多维度统计（年月日 / 标签 / 状态）     | ✅ 已实现 | LocalStorage |
 
 > Demo first 阶段：所有 UI 已贯通、数据走 `LocalStorageAdapter`。
 > 切换到 Tauri+SQLite 后端时，只需替换 `src/lib/dataAdapter.ts` 中 `TauriAdapter` 的实现，业务代码无需改动。
@@ -82,7 +83,7 @@ npm install
 npm run dev
 ```
 
-打开 <http://localhost:1420>。数据会持久化到浏览器 LocalStorage（key 前缀 `pt:`）。
+打开 [http://localhost:1420](http://localhost:1420)。数据会持久化到浏览器 LocalStorage（key 前缀 `pt:`）。
 
 ### 3. 桌面端开发（Tauri）
 
@@ -220,10 +221,10 @@ class TauriAdapter implements DataAdapter {
 
 ## 路线图（建议）
 
-- [ ] 接入 SQLite（按上文 4 步走）
-- [ ] 暗色模式
-- [ ] 任务子任务（嵌套 todo）
-- [ ] 重复任务规则（每天 / 每周）
-- [ ] 数据导入导出（JSON/CSV）
-- [ ] 系统托盘 + 全局快捷键启动番茄钟
-- [ ] 钉钉文档 OAuth 自动获取标题
+- [ ]  接入 SQLite（按上文 4 步走）
+- [ ]  暗色模式
+- [ ]  任务子任务（嵌套 todo）
+- [ ]  重复任务规则（每天 / 每周）
+- [ ]  数据导入导出（JSON/CSV）
+- [ ]  系统托盘 + 全局快捷键启动番茄钟
+- [ ]  钉钉文档 OAuth 自动获取标题
