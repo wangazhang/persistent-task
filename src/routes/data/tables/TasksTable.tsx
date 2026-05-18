@@ -99,17 +99,26 @@ export function TasksTable({ onOpenTask }: { onOpenTask: (t: Task) => void }) {
       key: "doc",
       label: "文档",
       render: (t) => {
-        if (!t.docUrl) return <span className="text-ink-300">—</span>;
+        const first = t.docs?.[0];
+        const url = first?.url ?? t.docUrl ?? null;
+        const title = first?.title ?? t.docTitle ?? url;
+        const more = t.docs && t.docs.length > 1 ? t.docs.length - 1 : 0;
+        if (!url) return <span className="text-ink-300">—</span>;
         return (
           <a
-            href={t.docUrl}
+            href={url}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
             className="inline-flex max-w-[140px] items-center gap-1 truncate text-brand-600 hover:underline"
-            title={t.docTitle ?? t.docUrl}
+            title={title ?? url}
           >
-            <span className="truncate">{t.docTitle ?? t.docUrl}</span>
+            <span className="truncate">{title ?? url}</span>
+            {more > 0 && (
+              <span className="shrink-0 rounded bg-ink-100 px-1 text-[10px] text-ink-500">
+                +{more}
+              </span>
+            )}
             <ExternalLink className="h-3 w-3 shrink-0" />
           </a>
         );
@@ -154,6 +163,7 @@ export function TasksTable({ onOpenTask }: { onOpenTask: (t: Task) => void }) {
       searchKeys={[
         (t) => t.title,
         (t) => t.description,
+        (t) => (t.docs ?? []).map((d) => d.title).join(" "),
         (t) => t.docTitle ?? "",
       ]}
       getRowId={(t) => t.id}

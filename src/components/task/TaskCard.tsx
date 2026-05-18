@@ -276,17 +276,29 @@ export function TaskCard({
             const t = tagsById.get(tid);
             return t ? <TagChip key={tid} tag={t} /> : null;
           })}
-          {task.docUrl && (
-            <a
-              href={task.docUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="chip border border-ink-200 bg-white text-ink-600 hover:border-brand-300 hover:text-brand-600"
-            >
-              <ExternalLink className="h-3 w-3" />
-              {task.docTitle || "关联文档"}
-            </a>
-          )}
+          {(() => {
+            const first = task.docs?.[0];
+            const url = first?.url ?? task.docUrl;
+            const title = first?.title || task.docTitle || "关联文档";
+            if (!url) return null;
+            const more = task.docs && task.docs.length > 1 ? task.docs.length - 1 : 0;
+            return (
+              <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="chip border border-ink-200 bg-white text-ink-600 hover:border-brand-300 hover:text-brand-600"
+              >
+                <ExternalLink className="h-3 w-3" />
+                {title}
+                {more > 0 && (
+                  <span className="ml-0.5 rounded bg-ink-100 px-1 text-[10px] text-ink-500">
+                    +{more}
+                  </span>
+                )}
+              </a>
+            );
+          })()}
           {task.scheduledDates.length > 1 && (
             <span className="chip bg-ink-50 text-ink-500">
               跨 {task.scheduledDates.length} 天

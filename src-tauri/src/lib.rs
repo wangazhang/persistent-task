@@ -56,7 +56,6 @@ pub fn run() {
             commands::insert_events,
             commands::query_events,
             commands::count_events,
-            tray::open_task_detail,
             tray::open_task_editor,
         ])
         .run(tauri::generate_context!())
@@ -95,6 +94,6 @@ mod tests {
     fn close_request_hides_only_main_window() {
         assert!(should_hide_instead_of_close("main"));
         assert!(!should_hide_instead_of_close("tray-popup"));
-        assert!(!should_hide_instead_of_close("task-detail"));
+        assert!(!should_hide_instead_of_close("task-editor"));
     }
 }

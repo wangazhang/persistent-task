@@ -65,10 +65,13 @@ ok("subtask summary appears above description editor", descriptionSummary < desc
 ok("subtask summary includes done and total", text.includes("{progress.done}/{progress.total} 子任务"));
 ok("subtask summary includes in-progress count", text.includes("{progress.inProgress} 进行中"));
 const actions = indexOf("actions section", 'data-task-editor-section="actions"');
-const compactSections = ["title", "status-priority", "color", "tags", "docs", "schedule"];
+// docs section 已抽到独立组件 TaskDocsField；此处只验证组件挂载点
+const compactSections = ["title", "status-priority", "color", "tags", "schedule"];
 const compactSectionIndexes = compactSections.map((section) =>
   indexOf(`${section} section`, `data-task-editor-section="${section}"`)
 );
+const docsField = indexOf("docs field", "<TaskDocsField");
+compactSectionIndexes.push(docsField);
 ok(
   "description is the last editable section",
   Math.max(...compactSectionIndexes) < description

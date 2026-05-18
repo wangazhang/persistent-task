@@ -34,6 +34,15 @@ impl Default for TaskPriority {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TaskDoc {
+    pub id: String,
+    #[serde(default)]
+    pub title: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Task {
     pub id: String,
     pub title: String,
@@ -49,9 +58,12 @@ pub struct Task {
     /// 自定义颜色（hex）。未设则前端按优先级 / 状态色显示。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// 多文档关联。新代码请用本字段；docUrl/docTitle 仅做老数据兼容。
+    #[serde(default)]
+    pub docs: Vec<TaskDoc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub doc_title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<String>,

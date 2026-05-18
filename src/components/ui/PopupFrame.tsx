@@ -1,6 +1,6 @@
 /**
  * 托盘 popup 通用容器：透明窗口 + 圆角白卡 + 阴影，配 transparent webview window
- * 使用得到"悬浮卡片"视觉效果。tray-popup / task-detail / task-editor 共用。
+ * 使用得到"悬浮卡片"视觉效果。tray-popup / task-editor 共用。
  */
 
 import type { ReactNode } from "react";

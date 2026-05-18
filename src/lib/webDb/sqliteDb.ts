@@ -95,7 +95,29 @@ export async function initWebDb(): Promise<Database> {
   // 对老 DB 补齐后加的列（与 Rust 端 ensure_column 等价）
   ensureColumn(db, "tasks", "color", "TEXT");
   ensureColumn(db, "tasks", "review_log", "TEXT");
+  // 老的 tasks.doc_url/doc_title 一次性迁移到 task_docs（与 Rust 端等价）
+  backfillTaskDocs(db);
   return db;
+}
+
+/**
+ * 把 tasks.doc_url / doc_title 回填到 task_docs。
+ * 仅迁移"该任务尚无任何 task_docs 记录"且 doc_url 非空的行。幂等。
+ */
+function backfillTaskDocs(database: Database): void {
+  database.run(
+    `INSERT INTO task_docs (task_id, id, title, url, "order")
+     SELECT
+        t.id,
+        'doc-legacy-' || t.id,
+        COALESCE(t.doc_title, ''),
+        t.doc_url,
+        0
+     FROM tasks t
+     WHERE t.doc_url IS NOT NULL
+       AND TRIM(t.doc_url) <> ''
+       AND NOT EXISTS (SELECT 1 FROM task_docs d WHERE d.task_id = t.id)`
+  );
 }
 
 /**

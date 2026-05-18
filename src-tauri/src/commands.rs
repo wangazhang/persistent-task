@@ -12,7 +12,7 @@
 use crate::db::AppState;
 use crate::models::{
     AnalyticsEvent, EventCountRow, EventFilter, EventGroupBy, EventSource,
-    PomodoroSession, PomodoroType, Tag, Task, TaskPriority, TaskStatus,
+    PomodoroSession, PomodoroType, Tag, Task, TaskDoc, TaskPriority, TaskStatus,
 };
 use rusqlite::params;
 use tauri::State;
@@ -88,6 +88,7 @@ pub fn list_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
             tag_ids: vec![],
             order,
             color,
+            docs: vec![],
             doc_url,
             doc_title,
             completed_at,
@@ -129,6 +130,32 @@ pub fn list_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
         }
     }
 
+    let mut docs_by_task: std::collections::HashMap<String, Vec<TaskDoc>> =
+        std::collections::HashMap::new();
+    {
+        let mut s = conn
+            .prepare(
+                r#"SELECT task_id, id, title, url FROM task_docs ORDER BY task_id, "order", id"#,
+            )
+            .map_err(to_err)?;
+        let rows = s
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    TaskDoc {
+                        id: row.get::<_, String>(1)?,
+                        title: row.get::<_, String>(2)?,
+                        url: row.get::<_, String>(3)?,
+                    },
+                ))
+            })
+            .map_err(to_err)?;
+        for r in rows {
+            let (tid, doc) = r.map_err(to_err)?;
+            docs_by_task.entry(tid).or_default().push(doc);
+        }
+    }
+
     // 3) 装配
     for t in tasks.iter_mut() {
         if let Some(d) = dates_by_task.remove(&t.id) {
@@ -136,6 +163,9 @@ pub fn list_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
         }
         if let Some(tg) = tags_by_task.remove(&t.id) {
             t.tag_ids = tg;
+        }
+        if let Some(docs) = docs_by_task.remove(&t.id) {
+            t.docs = docs;
         }
     }
 
@@ -146,6 +176,14 @@ pub fn list_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
 pub fn upsert_task(state: State<AppState>, task: Task) -> Result<(), String> {
     let mut conn = state.conn.lock();
     let tx = conn.transaction().map_err(to_err)?;
+
+    // 把 docs[0] 同步到老的 doc_url/doc_title 列，确保两种字段一致：
+    //   - 给老代码读取留向后兼容
+    //   - 避免 docs 被清空后老字段还在残留、下次启动 backfill 再回填
+    let (legacy_url, legacy_title) = match task.docs.first() {
+        Some(d) => (Some(d.url.clone()), Some(d.title.clone())),
+        None => (task.doc_url.clone(), task.doc_title.clone()),
+    };
 
     tx.execute(
         r#"
@@ -174,8 +212,8 @@ pub fn upsert_task(state: State<AppState>, task: Task) -> Result<(), String> {
             task.status.as_str(),
             task.priority.as_str(),
             task.order,
-            task.doc_url,
-            task.doc_title,
+            legacy_url,
+            legacy_title,
             task.color,
             task.completed_at,
             task.created_at,
@@ -202,6 +240,17 @@ pub fn upsert_task(state: State<AppState>, task: Task) -> Result<(), String> {
         tx.execute(
             "INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?1, ?2)",
             params![task.id, tg],
+        )
+        .map_err(to_err)?;
+    }
+
+    tx.execute("DELETE FROM task_docs WHERE task_id = ?1", params![task.id])
+        .map_err(to_err)?;
+    for (idx, doc) in task.docs.iter().enumerate() {
+        tx.execute(
+            r#"INSERT OR REPLACE INTO task_docs (task_id, id, title, url, "order")
+               VALUES (?1, ?2, ?3, ?4, ?5)"#,
+            params![task.id, doc.id, doc.title, doc.url, idx as i32],
         )
         .map_err(to_err)?;
     }
@@ -360,6 +409,7 @@ pub fn clear_all(state: State<AppState>) -> Result<(), String> {
     // 关联表先于主表删除（虽然有 CASCADE，显式删一次更直观）
     tx.execute("DELETE FROM task_tags", []).map_err(to_err)?;
     tx.execute("DELETE FROM task_dates", []).map_err(to_err)?;
+    tx.execute("DELETE FROM task_docs", []).map_err(to_err)?;
     tx.execute("DELETE FROM pomodoros", []).map_err(to_err)?;
     tx.execute("DELETE FROM tasks", []).map_err(to_err)?;
     tx.execute("DELETE FROM tags", []).map_err(to_err)?;

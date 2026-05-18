@@ -5,7 +5,7 @@
  *   - suspended   → paused  (紫)
  *   - done        → success (绿)
  *
- * TaskEditor 与 TaskDetailPopup 共用一份配色，避免两边漂移。
+ * TaskEditor 与 TaskEditorWindow 共用一份配色，避免两边漂移。
  */
 
 import type { TaskStatus } from "@/lib/types";

@@ -19,9 +19,6 @@ const TRAY_ID: &str = "main-tray";
 const POPUP_LABEL: &str = "tray-popup";
 const POPUP_W: f64 = 360.0;
 const POPUP_H: f64 = 520.0;
-const DETAIL_LABEL: &str = "task-detail";
-const DETAIL_W: f64 = 420.0;
-const DETAIL_H: f64 = 560.0;
 const EDITOR_LABEL: &str = "task-editor";
 const EDITOR_W: f64 = 720.0;
 const EDITOR_H: f64 = 760.0;
@@ -99,55 +96,13 @@ fn create_popup_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     Ok(())
 }
 
-/// 前端 invoke：打开 / 切换某任务的轻量详情独立窗口。
-/// 复用单一 task-detail webview window（每次打开不同任务时复用），
-/// 显示在屏幕中央偏上的位置。
-#[tauri::command]
-pub fn open_task_detail<R: Runtime>(app: AppHandle<R>, task_id: String) -> Result<(), String> {
-    // 已存在 → show + emit "切到这个 taskId" 事件（detail 内部用 useState 切换，
-    // 避免 webview reload 引入的 race / 闪屏）
-    if let Some(w) = app.get_webview_window(DETAIL_LABEL) {
-        let _ = w.show();
-        let _ = w.set_focus();
-        let _ = app.emit_to(DETAIL_LABEL, "tray:detail-target", task_id);
-        return Ok(());
-    }
-
-    // 首次创建：把 taskId 放到 URL 里作为初始值（detail 启动后从 URL 读一次）
-    let url = format!("index.html?win=task-detail&taskId={}", task_id);
-    let window = WebviewWindowBuilder::new(
-        &app,
-        DETAIL_LABEL,
-        WebviewUrl::App(url.into()),
-    )
-    .title("任务详情")
-    .inner_size(DETAIL_W, DETAIL_H)
-    .decorations(false)
-    .transparent(true)
-    .shadow(false)
-    .resizable(false)
-    .skip_taskbar(true)
-    .always_on_top(true)
-    .visible(true)
-    .focused(true)
-    .center()
-    .build()
-    .map_err(|e| e.to_string())?;
-
-    let app_clone = app.clone();
-    window.on_window_event(move |event| {
-        if let WindowEvent::Focused(false) = event {
-            if let Some(w) = app_clone.get_webview_window(DETAIL_LABEL) {
-                let _ = w.hide();
-            }
-        }
-    });
-
-    let _ = window.set_size(LogicalSize::new(DETAIL_W, DETAIL_H));
-    Ok(())
-}
-
 /// 前端 invoke：打开 / 切换完整任务编辑器独立窗口。
+///
+/// 窗口归属设计（modeless child）：
+///   - parent = main → 跟随主窗口的 z 序，不会浮在其他 App 之上；
+///     macOS 上是 child window；Windows 上是 owner-window 关系。
+///   - 不设 always_on_top → 切到其它 App 时自然沉到下面。
+///   - skip_taskbar 保留：弹窗不出现在 Dock / 任务栏，避免和主窗口重复。
 #[tauri::command]
 pub fn open_task_editor<R: Runtime>(
     app: AppHandle<R>,
@@ -167,7 +122,7 @@ pub fn open_task_editor<R: Runtime>(
     }
 
     let url = task_editor_url(&target);
-    let window = WebviewWindowBuilder::new(
+    let mut builder = WebviewWindowBuilder::new(
         &app,
         EDITOR_LABEL,
         WebviewUrl::App(url.into()),
@@ -179,12 +134,16 @@ pub fn open_task_editor<R: Runtime>(
     .shadow(false)
     .resizable(true)
     .skip_taskbar(true)
-    .always_on_top(true)
     .visible(true)
     .focused(true)
-    .center()
-    .build()
-    .map_err(|e| e.to_string())?;
+    .center();
+
+    // 把 main 设为 parent。失败（main 不存在）时退化为无 parent 的普通窗口。
+    if let Some(main) = app.get_webview_window("main") {
+        builder = builder.parent(&main).map_err(|e| e.to_string())?;
+    }
+
+    let window = builder.build().map_err(|e| e.to_string())?;
 
     let _ = window.set_size(LogicalSize::new(EDITOR_W, EDITOR_H));
     Ok(())

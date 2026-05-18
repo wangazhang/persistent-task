@@ -55,6 +55,16 @@ CREATE TABLE IF NOT EXISTS task_tags (
 );
 CREATE INDEX IF NOT EXISTS idx_task_tags_tag ON task_tags(tag_id);
 
+CREATE TABLE IF NOT EXISTS task_docs (
+    task_id  TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    id       TEXT NOT NULL,
+    title    TEXT NOT NULL DEFAULT '',
+    url      TEXT NOT NULL,
+    "order"  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (task_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_task_docs_task ON task_docs(task_id);
+
 CREATE TABLE IF NOT EXISTS pomodoros (
     id           TEXT PRIMARY KEY,
     task_id      TEXT REFERENCES tasks(id) ON DELETE SET NULL,

@@ -14,8 +14,6 @@ import { isTauri } from "./dataAdapter";
 const EV_STATE = "tray:state";
 const EV_REQUEST = "tray:request-state";
 const EV_ACTION = "tray:action";
-/** 主窗口 → detail 窗口：切换显示的任务 id（避免 webview reload）*/
-const EV_DETAIL_TARGET = "tray:detail-target";
 
 export type TrayAction =
   | { kind: "open_main" }
@@ -49,11 +47,9 @@ export async function emitTrayState(snap: TrayStateSnapshot): Promise<void> {
   if (!isTauri()) return;
   try {
     const { emitTo } = await import("@tauri-apps/api/event");
-    // 同时推给两个相关窗口；失败（窗口未创建）忽略
-    await Promise.allSettled([
-      emitTo("tray-popup", EV_STATE, snap),
-      emitTo("task-detail", EV_STATE, snap),
-    ]);
+    // 推给 tray-popup；窗口未创建时 emitTo 会静默失败，这里用 Promise.allSettled
+    // 是为给后续可能再加的窗口预留口子
+    await Promise.allSettled([emitTo("tray-popup", EV_STATE, snap)]);
   } catch (err) {
     console.error("[trayBridge] emit state failed", err);
   }
@@ -118,29 +114,6 @@ export async function requestTrayStateRefresh(): Promise<void> {
     await emitTo("main", EV_REQUEST);
   } catch (err) {
     console.error("[trayBridge] request refresh failed", err);
-  }
-}
-
-/** detail 窗口监听：主窗口/popup 通知它该显示哪个 taskId */
-export async function listenDetailTarget(
-  handler: (taskId: string) => void
-): Promise<() => void> {
-  if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
-  const un = await listen<string>(EV_DETAIL_TARGET, (e) => {
-    if (typeof e.payload === "string") handler(e.payload);
-  });
-  return un;
-}
-
-/** popup/main → detail：切换显示的 task */
-export async function setDetailTarget(taskId: string): Promise<void> {
-  if (!isTauri()) return;
-  try {
-    const { emitTo } = await import("@tauri-apps/api/event");
-    await emitTo("task-detail", EV_DETAIL_TARGET, taskId);
-  } catch (err) {
-    console.error("[trayBridge] set detail target failed", err);
   }
 }
 

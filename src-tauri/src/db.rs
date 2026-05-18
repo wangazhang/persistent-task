@@ -80,6 +80,17 @@ impl AppState {
             );
             CREATE INDEX IF NOT EXISTS idx_task_tags_tag ON task_tags(tag_id);
 
+            -- 任务关联文档：一个任务可以挂多个 URL
+            CREATE TABLE IF NOT EXISTS task_docs (
+                task_id  TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                id       TEXT NOT NULL,
+                title    TEXT NOT NULL DEFAULT '',
+                url      TEXT NOT NULL,
+                "order"  INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (task_id, id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_task_docs_task ON task_docs(task_id);
+
             CREATE TABLE IF NOT EXISTS pomodoros (
                 id           TEXT PRIMARY KEY,
                 task_id      TEXT REFERENCES tasks(id) ON DELETE SET NULL,
@@ -116,8 +127,36 @@ impl AppState {
         ensure_column(conn, "tasks", "color", "TEXT")?;
         ensure_column(conn, "tasks", "review_log", "TEXT")?;
 
+        // 老的 tasks.doc_url / doc_title 迁移到 task_docs（幂等：仅迁尚未挂任何文档的 task）
+        backfill_task_docs(conn)?;
+
         Ok(())
     }
+}
+
+/// 把老数据里的 tasks.doc_url + doc_title 回填到 task_docs。
+///
+/// - 只处理"该任务在 task_docs 里还一条都没有"且 doc_url 非空的行
+/// - id 用 "doc-legacy-{task_id}"，order = 0
+/// - 不删除 tasks.doc_url / doc_title 列：保留作为 schema 兼容（导入老 .db 文件仍可识别）
+fn backfill_task_docs(conn: &Connection) -> Result<()> {
+    conn.execute(
+        r#"
+        INSERT INTO task_docs (task_id, id, title, url, "order")
+        SELECT
+            t.id,
+            'doc-legacy-' || t.id,
+            COALESCE(t.doc_title, ''),
+            t.doc_url,
+            0
+        FROM tasks t
+        WHERE t.doc_url IS NOT NULL
+          AND TRIM(t.doc_url) <> ''
+          AND NOT EXISTS (SELECT 1 FROM task_docs d WHERE d.task_id = t.id)
+        "#,
+        params![],
+    )?;
+    Ok(())
 }
 
 /// 检测列是否存在，不存在则 ALTER TABLE ADD COLUMN（SQLite 不支持 IF NOT EXISTS 加列）
