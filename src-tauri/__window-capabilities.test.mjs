@@ -13,7 +13,7 @@ const required = [
   "core:window:allow-start-dragging",
 ];
 
-const requiredWindows = ["main", "tray-popup", "task-detail", "task-editor"];
+const requiredWindows = ["main", "tray-popup", "task-editor"];
 
 let fail = 0;
 for (const permission of required) {

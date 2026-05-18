@@ -13,6 +13,7 @@ import type {
   PomodoroType,
   Tag,
   Task,
+  TaskDoc,
   TaskPriority,
   TaskReviewEntry,
   TaskStatus,
@@ -115,6 +116,7 @@ export class SqliteAdapter implements DataAdapter {
       tagIds: [],
       order: n(r.order),
       color: (r.color as string | null) ?? undefined,
+      docs: [],
       docUrl: (r.doc_url as string | null) ?? undefined,
       docTitle: (r.doc_title as string | null) ?? undefined,
       completedAt: (r.completed_at as string | null) ?? undefined,
@@ -143,15 +145,33 @@ export class SqliteAdapter implements DataAdapter {
       tagsByTask.set(k, arr);
     }
 
+    const docRows = query<Row>(
+      `SELECT task_id, id, title, url FROM task_docs ORDER BY task_id, "order", id`
+    );
+    const docsByTask = new Map<string, TaskDoc[]>();
+    for (const r of docRows) {
+      const k = s(r.task_id);
+      const arr = docsByTask.get(k) ?? [];
+      arr.push({ id: s(r.id), title: s(r.title), url: s(r.url) });
+      docsByTask.set(k, arr);
+    }
+
     for (const t of tasks) {
       t.scheduledDates = datesByTask.get(t.id) ?? [];
       t.tagIds = tagsByTask.get(t.id) ?? [];
+      t.docs = docsByTask.get(t.id) ?? [];
     }
     return tasks;
   }
 
   async upsertTask(task: Task): Promise<void> {
     tx(() => {
+      // 把 docs[0] 同步到老的 doc_url/doc_title 列（与 Rust 端一致）：
+      // 给老代码读取留向后兼容，避免 docs 清空后老字段还在残留触发 backfill
+      const firstDoc = task.docs && task.docs.length > 0 ? task.docs[0] : null;
+      const legacyUrl = firstDoc ? firstDoc.url : task.docUrl ?? null;
+      const legacyTitle = firstDoc ? firstDoc.title : task.docTitle ?? null;
+
       run(
         `INSERT INTO tasks (
             id, title, description, status, priority, "order",
@@ -177,8 +197,8 @@ export class SqliteAdapter implements DataAdapter {
           task.status,
           task.priority ?? "p2",
           task.order,
-          task.docUrl ?? null,
-          task.docTitle ?? null,
+          legacyUrl,
+          legacyTitle,
           task.color ?? null,
           task.completedAt ?? null,
           task.createdAt,
@@ -202,6 +222,17 @@ export class SqliteAdapter implements DataAdapter {
         run(
           `INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?)`,
           [task.id, tg]
+        );
+      }
+
+      run(`DELETE FROM task_docs WHERE task_id = ?`, [task.id]);
+      const docs = task.docs ?? [];
+      for (let i = 0; i < docs.length; i++) {
+        const d = docs[i];
+        run(
+          `INSERT OR REPLACE INTO task_docs (task_id, id, title, url, "order")
+           VALUES (?, ?, ?, ?, ?)`,
+          [task.id, d.id, d.title, d.url, i]
         );
       }
     });

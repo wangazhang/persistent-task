@@ -40,6 +40,13 @@ export interface TaskReviewEntry {
   reason?: string;
 }
 
+/** 任务关联的单个外部文档 */
+export interface TaskDoc {
+  id: string;
+  title: string;
+  url: string;
+}
+
 /** 任务 */
 export interface Task {
   id: string;
@@ -71,8 +78,15 @@ export interface Task {
    * 未设（undefined）则视图按优先级 / 状态色降级，对老数据零回归。
    */
   color?: string;
-  /** 关联外部文档（钉钉文档 / 飞书 / 任意 URL）*/
+  /**
+   * 关联外部文档列表（钉钉文档 / 飞书 / 任意 URL）。
+   * 旧数据可能只有 docUrl/docTitle —— hydrate 时会把它们迁移到 docs[0]。
+   * 之后写入仍以 docs 为准；docUrl/docTitle 仅作向后兼容字段，新代码请勿直接写。
+   */
+  docs?: TaskDoc[];
+  /** @deprecated 用 docs[0]，仅做老数据兼容 */
   docUrl?: string;
+  /** @deprecated 用 docs[0]，仅做老数据兼容 */
   docTitle?: string;
   /** 完成时间（ISO 字符串）*/
   completedAt?: string;

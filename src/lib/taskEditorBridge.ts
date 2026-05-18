@@ -5,7 +5,7 @@
  * 的 zustand store 处理，避免多个 webview 各自写库导致状态分叉。
  */
 
-import type { Tag, Task, TaskPriority, TaskStatus } from "./types";
+import type { Tag, Task, TaskDoc, TaskPriority, TaskStatus } from "./types";
 import { isTauri } from "./dataAdapter";
 
 const EDITOR_LABEL = "task-editor";
@@ -27,8 +27,7 @@ export interface TaskEditorDraft {
   tagIds: string[];
   scheduledDates: string[];
   color: string | null;
-  docUrl: string | null;
-  docTitle: string | null;
+  docs: TaskDoc[];
   completedAt?: string | null;
 }
 
@@ -65,8 +64,10 @@ export function taskEditorDraftToTaskPatch(draft: TaskEditorDraft): Partial<Task
     tagIds: draft.tagIds,
     scheduledDates: draft.scheduledDates,
     color: draft.color ?? undefined,
-    docUrl: draft.docUrl ?? undefined,
-    docTitle: draft.docTitle ?? undefined,
+    docs: draft.docs,
+    // 兼容旧 docUrl/docTitle 字段：跟 docs[0] 保持一致
+    docUrl: draft.docs[0]?.url ?? undefined,
+    docTitle: draft.docs[0]?.title ?? undefined,
   };
   if (draft.completedAt !== undefined) {
     patch.completedAt = draft.completedAt ?? undefined;

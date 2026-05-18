@@ -19,8 +19,9 @@ const NEXT_STATE: Record<TriState, TriState> = {
   done: "todo",
 };
 
-// 行内输入触发：行首 `[ ] ` / `[x] ` / `[/] ` + 空格
-const inputRegex = /^\s*\[([ xX/])\]\s$/;
+// 行内输入触发：行首 `[ ] ` / `[] ` / `[x] ` / `[/] ` + 空格
+// 括号内字符可省略：`[]` 与 `[ ]` 都视为未开始；`[x]/[X]` = 完成；`[/]` = 进行中。
+const inputRegex = /^\s*\[([ xX/]?)\]\s$/;
 
 function parseStateAttr(s: unknown): TriState {
   if (s === "in_progress") return "in_progress";
@@ -92,9 +93,10 @@ export const TriTaskItem = Node.create({
         find: inputRegex,
         type: this.type,
         getAttributes: (match) => {
-          const ch = match[match.length - 1];
+          const ch = match[match.length - 1] ?? "";
           if (ch === "x" || ch === "X") return { state: "done" };
           if (ch === "/") return { state: "in_progress" };
+          // 空字符串（`[]`）或单空格（`[ ]`）→ todo
           return { state: "todo" };
         },
       }),

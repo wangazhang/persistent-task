@@ -5,9 +5,10 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { Flag, X as XIcon } from "lucide-react";
-import type { Tag, Task, TaskPriority, TaskStatus } from "@/lib/types";
+import type { Tag, Task, TaskDoc, TaskPriority, TaskStatus } from "@/lib/types";
 import type { TaskEditorDraft } from "@/lib/taskEditorBridge";
 import { cn, isoDate } from "@/lib/utils";
+import { TaskDocsField } from "./TaskDocsField";
 import { PRESET_COLORS } from "@/lib/colors";
 import { parseTaskProgress } from "@/lib/taskProgress";
 import { StatusButtonGroup } from "@/components/ui/StatusButtonGroup";
@@ -88,8 +89,7 @@ export function TaskEditorForm({
   const [status, setStatus] = useState<TaskStatus>("todo");
   const [priority, setPriority] = useState<TaskPriority>("p2");
   const [tagIds, setTagIds] = useState<string[]>([]);
-  const [docUrl, setDocUrl] = useState("");
-  const [docTitle, setDocTitle] = useState("");
+  const [docs, setDocs] = useState<TaskDoc[]>([]);
   const [scheduledDates, setScheduledDates] = useState<string[]>([]);
   const [newDate, setNewDate] = useState(defaultDate ?? isoDate());
   const [color, setColor] = useState<string | undefined>(undefined);
@@ -103,8 +103,7 @@ export function TaskEditorForm({
       setStatus(task.status);
       setPriority(task.priority ?? "p2");
       setTagIds(task.tagIds);
-      setDocUrl(task.docUrl ?? "");
-      setDocTitle(task.docTitle ?? "");
+      setDocs(initialDocsFromTask(task));
       setScheduledDates(task.scheduledDates);
       setColor(task.color);
     } else {
@@ -113,8 +112,7 @@ export function TaskEditorForm({
       setStatus("todo");
       setPriority("p2");
       setTagIds([]);
-      setDocUrl("");
-      setDocTitle("");
+      setDocs([]);
       setScheduledDates(defaultDate ? [defaultDate] : [isoDate()]);
       setColor(undefined);
     }
@@ -170,8 +168,7 @@ export function TaskEditorForm({
       tagIds,
       scheduledDates,
       color: color ?? null,
-      docUrl: docUrl.trim() || null,
-      docTitle: docTitle.trim() || null,
+      docs: cleanDocs(docs),
       ...(completedAt !== undefined ? { completedAt } : {}),
     };
     await onSave(draft);
@@ -365,33 +362,7 @@ export function TaskEditorForm({
           </div>
         </div>
 
-        <div
-          data-task-editor-section="docs"
-          className="grid grid-cols-2 gap-3"
-        >
-          <div>
-            <label className="mb-1 block text-xs font-medium text-ink-500">
-              关联文档 URL（钉钉文档 / 飞书 / 任意链接）
-            </label>
-            <input
-              className="input"
-              placeholder="https://alidocs.dingtalk.com/..."
-              value={docUrl}
-              onChange={(e) => setDocUrl(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-ink-500">
-              文档显示标题（可选）
-            </label>
-            <input
-              className="input"
-              placeholder="例如：Q3 OKR 草稿"
-              value={docTitle}
-              onChange={(e) => setDocTitle(e.target.value)}
-            />
-          </div>
-        </div>
+        <TaskDocsField value={docs} onChange={setDocs} />
 
         <div data-task-editor-section="schedule">
           <label className="mb-1 block text-xs font-medium text-ink-500">
@@ -466,6 +437,8 @@ export function TaskEditorForm({
           <div className="mb-1 flex items-center justify-between">
             <label className="block text-xs font-medium text-ink-500">
               任务简述（支持子任务：输入{" "}
+              <code className="rounded bg-ink-100 px-1 text-[11px]">[]</code>{" "}
+              或{" "}
               <code className="rounded bg-ink-100 px-1 text-[11px]">[ ]</code>{" "}
               加空格自动转勾选框）
             </label>
@@ -500,4 +473,32 @@ export function TaskEditorForm({
       </div>
     </div>
   );
+}
+
+/**
+ * 老数据兼容：如果 task.docs 缺失但有老的 docUrl/docTitle，构造一个 doc[0]。
+ * 新代码请用 task.docs 字段。
+ */
+function initialDocsFromTask(task: Task): TaskDoc[] {
+  if (task.docs && task.docs.length > 0) return task.docs;
+  if (task.docUrl) {
+    return [
+      {
+        id: "doc-legacy-" + task.id,
+        title: task.docTitle ?? "",
+        url: task.docUrl,
+      },
+    ];
+  }
+  return [];
+}
+
+/**
+ * 写入前清洗：丢掉 URL 为空的行；trim 标题/URL。
+ * 标题留空允许，详情显示时退化为 URL 文本。
+ */
+function cleanDocs(docs: TaskDoc[]): TaskDoc[] {
+  return docs
+    .map((d) => ({ id: d.id, title: d.title.trim(), url: d.url.trim() }))
+    .filter((d) => d.url.length > 0);
 }

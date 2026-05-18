@@ -80,13 +80,13 @@ function persistDeletePomo(id: string) {
 
 const taskTrackingMapping: ActionMapping<TaskStoreState> = {
   addTask: (ret) => {
-    const t = ret as { id: string; priority: TaskPriority; tagIds: string[]; description?: string };
+    const t = ret as { id: string; priority: TaskPriority; tagIds: string[]; docs?: { url: string }[]; description?: string };
     return [
       ["task.created", {
         taskId: t.id,
         priority: t.priority,
         tagIds: t.tagIds ?? [],
-        hasDoc: !!(t as any).docUrl,
+        hasDoc: (t.docs?.length ?? 0) > 0,
       }],
     ];
   },
@@ -193,6 +193,7 @@ export const useTaskStore = create<TaskStoreState>()(
             t.scheduledDates.includes(d)
           )
         ).length || 0),
+      docs: partial.docs ?? [],
       docUrl: partial.docUrl,
       docTitle: partial.docTitle,
       completedAt: partial.completedAt,
