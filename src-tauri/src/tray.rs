@@ -103,6 +103,10 @@ fn create_popup_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 ///     macOS 上是 child window；Windows 上是 owner-window 关系。
 ///   - 不设 always_on_top → 切到其它 App 时自然沉到下面。
 ///   - skip_taskbar 保留：弹窗不出现在 Dock / 任务栏，避免和主窗口重复。
+///
+/// 位置策略：以主窗口的几何中心为基准居中弹窗。这样在多屏 / 多 Space
+/// 场景下，弹窗总会出现在主窗口所在屏幕，与主窗口视觉绑定。主窗口若
+/// 被最小化，先 unminimize + show + focus 让它"亮起来"，再算位置。
 #[tauri::command]
 pub fn open_task_editor<R: Runtime>(
     app: AppHandle<R>,
@@ -114,7 +118,20 @@ pub fn open_task_editor<R: Runtime>(
         default_date,
     };
 
+    // 主窗口若处于最小化，先恢复（满足"详情依附主窗口"的视觉契约）
+    if let Some(main) = app.get_webview_window("main") {
+        if main.is_minimized().unwrap_or(false) {
+            let _ = main.unminimize();
+        }
+        let _ = main.show();
+        let _ = main.set_focus();
+    }
+
     if let Some(w) = app.get_webview_window(EDITOR_LABEL) {
+        // 复用现有窗口：重新定位到当前主窗口中心，再 show + focus
+        if let Some(pos) = compute_editor_center(&app) {
+            let _ = w.set_position(pos);
+        }
         let _ = w.show();
         let _ = w.set_focus();
         let _ = app.emit_to(EDITOR_LABEL, "task-editor:target", target);
@@ -135,8 +152,13 @@ pub fn open_task_editor<R: Runtime>(
     .resizable(true)
     .skip_taskbar(true)
     .visible(true)
-    .focused(true)
-    .center();
+    .focused(true);
+
+    // 主窗口可用 → 以其中心定位弹窗；否则 fallback 到屏幕居中。
+    let manual_pos = compute_editor_center(&app);
+    if manual_pos.is_none() {
+        builder = builder.center();
+    }
 
     // 把 main 设为 parent。失败（main 不存在）时退化为无 parent 的普通窗口。
     if let Some(main) = app.get_webview_window("main") {
@@ -146,7 +168,30 @@ pub fn open_task_editor<R: Runtime>(
     let window = builder.build().map_err(|e| e.to_string())?;
 
     let _ = window.set_size(LogicalSize::new(EDITOR_W, EDITOR_H));
+    if let Some(pos) = manual_pos {
+        let _ = window.set_position(pos);
+    }
     Ok(())
+}
+
+/// 计算弹窗居中位置（物理坐标）：以主窗口几何中心为基准，减去
+/// 弹窗一半（按主窗口 monitor 的 scale_factor 把逻辑像素转物理像素）。
+/// 主窗口不存在 / 取不到几何信息时返回 None，调用方退到默认 center()。
+fn compute_editor_center<R: Runtime>(app: &AppHandle<R>) -> Option<PhysicalPosition<i32>> {
+    let main = app.get_webview_window("main")?;
+    let pos = main.outer_position().ok()?;
+    let size = main.outer_size().ok()?;
+    let scale = main
+        .current_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.scale_factor())
+        .unwrap_or(1.0);
+    let popup_w_px = (EDITOR_W * scale) as i32;
+    let popup_h_px = (EDITOR_H * scale) as i32;
+    let cx = pos.x + (size.width as i32) / 2;
+    let cy = pos.y + (size.height as i32) / 2;
+    Some(PhysicalPosition::new(cx - popup_w_px / 2, cy - popup_h_px / 2))
 }
 
 fn task_editor_url(target: &TaskEditorTarget) -> String {

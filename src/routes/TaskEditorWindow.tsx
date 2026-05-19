@@ -114,6 +114,42 @@ export default function TaskEditorWindow() {
     await close();
   }
 
+  // 快捷键：
+  //   Esc       —— 焦点在可编辑控件上时先失焦（让用户先确认丢弃输入态），
+  //                否则直接关窗。富文本编辑器自身也用 Esc 收弹层
+  //                （斜杠菜单 / BubbleMenu），所以同样走 blur 让它接管。
+  //   Cmd/Ctrl+S —— 触发 TaskEditorForm 的保存按钮（form 自己负责校验 + onSave，
+  //                保存后会调用 close()）。
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        const ae = document.activeElement as HTMLElement | null;
+        const editable =
+          ae instanceof HTMLInputElement ||
+          ae instanceof HTMLTextAreaElement ||
+          (ae && ae.isContentEditable);
+        if (editable) {
+          ae.blur();
+          return;
+        }
+        e.preventDefault();
+        void close();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        // 找 form 的「保存」按钮：actions section 内唯一一颗 btn-primary。
+        // 用 selector 而不是 ref：避免把命令式接口暴露穿过 TaskEditorForm。
+        const btn = document.querySelector<HTMLButtonElement>(
+          '[data-task-editor-section="actions"] button.btn-primary'
+        );
+        btn?.click();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <PopupFrame>
       <div className="flex min-h-0 flex-1 flex-col">
