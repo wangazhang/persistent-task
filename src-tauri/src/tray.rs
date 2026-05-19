@@ -247,18 +247,24 @@ fn toggle_popup<R: Runtime>(app: &AppHandle<R>, anchor_x: f64, anchor_y: f64) {
         return;
     }
 
-    // 计算 popup 位置：以 icon 中心点为锚，水平居中，垂直紧贴 icon 下沿。
-    // anchor_x/anchor_y 是 tray icon 区域左上角的物理坐标（macOS 顶部状态栏）。
-    // popup 物理坐标 = anchor - popup_w/2 + icon_w/2，但 macOS 状态栏 icon 高约 22。
-    let scale_factor = window
-        .current_monitor()
+    // 用「点击的 tray icon 物理坐标」去查 monitor —— 这是跟随点击屏幕的关键。
+    // 之所以不用 window.current_monitor()：popup 是预创建的隐藏窗口，
+    // current_monitor 返回它"被创建那一瞬间"的屏幕，跨屏后会错位。
+    // anchor_* 已经是物理坐标（macOS 顶部状态栏 icon 区左上角）。
+    let target_monitor = app
+        .monitor_from_point(anchor_x, anchor_y)
         .ok()
         .flatten()
+        .or_else(|| app.primary_monitor().ok().flatten());
+
+    let scale_factor = target_monitor
+        .as_ref()
         .map(|m| m.scale_factor())
         .unwrap_or(2.0);
 
+    // 计算 popup 位置：以 icon 中心点为锚，水平居中，垂直紧贴 icon 下沿。
+    // popup 物理坐标 = anchor - popup_w/2 + icon_w/2，icon 高约 22 逻辑像素。
     let popup_w_px = POPUP_W * scale_factor;
-    // icon 区域大概 22x22 逻辑像素，但物理像素：22 * scale
     let icon_w_px = 22.0 * scale_factor;
     let icon_h_px = 22.0 * scale_factor;
     let gap_px = 4.0 * scale_factor;
@@ -266,8 +272,9 @@ fn toggle_popup<R: Runtime>(app: &AppHandle<R>, anchor_x: f64, anchor_y: f64) {
     let mut x = anchor_x + icon_w_px / 2.0 - popup_w_px / 2.0;
     let mut y = anchor_y + icon_h_px + gap_px;
 
-    // 屏幕边界保护：避免 popup 跑出可视区
-    if let Ok(Some(monitor)) = window.current_monitor() {
+    // 屏幕边界保护：用刚才查到的 monitor 的几何（而不是 popup 当前所在屏），
+    // 保证跨屏切换时边界判断也跟着切换。
+    if let Some(monitor) = target_monitor.as_ref() {
         let mon_size = monitor.size();
         let mon_pos = monitor.position();
         let max_x = (mon_pos.x as f64) + (mon_size.width as f64) - popup_w_px - 8.0 * scale_factor;
@@ -283,6 +290,8 @@ fn toggle_popup<R: Runtime>(app: &AppHandle<R>, anchor_x: f64, anchor_y: f64) {
         }
     }
 
+    // 先定位再显示：macOS 在跨屏移动可见 window 时偶尔会闪一下旧位置。
+    // 实测序列 set_position → show 比 show → set_position 更稳。
     let _ = window.set_position(PhysicalPosition::new(x, y));
     let _ = window.show();
     let _ = window.set_focus();

@@ -31,6 +31,7 @@ import {
 import type { TrayStateSnapshot } from "@/store/trayStore";
 import { isTauri } from "@/lib/dataAdapter";
 import { isoDate } from "@/lib/utils";
+import { taskSorter } from "@/routes/tasks/views/_helpers";
 
 export function TrayMainBridge() {
   const tasks = useTaskStore((s) => s.tasks);
@@ -49,6 +50,9 @@ export function TrayMainBridge() {
           t.scheduledDates.includes(today) &&
           (t.status === "todo" || t.status === "in_progress" || t.status === "suspended")
       )
+      // 与主窗口 TodayView 共用同一排序（priority → status → order）
+      // 避免菜单栏弹窗和主窗口顺序漂移
+      .sort(taskSorter)
       .map((t) => ({
         id: t.id,
         title: t.title,
