@@ -228,3 +228,122 @@ class TauriAdapter implements DataAdapter {
 - [ ]  数据导入导出（JSON/CSV）
 - [ ]  系统托盘 + 全局快捷键启动番茄钟
 - [ ]  钉钉文档 OAuth 自动获取标题
+
+---
+
+## MCP（Model Context Protocol）接入
+
+桌面 app 内置了一个本地 MCP 服务，让你的 AI agent（Claude Desktop / Cursor / Claude Code / 任意 MCP 客户端）能够读写当前的任务、标签、番茄记录。**无需暴露到公网，全部走 `127.0.0.1`**。
+
+### 启用步骤
+
+1. 启动桌面 app：`npm run tauri:dev`（开发态）或运行打包后的 `.app`
+2. 侧边栏底部点击 **「高级」**
+3. 打开 **「启用 MCP 服务」** 胶囊开关
+4. 服务默认监听 `http://127.0.0.1:7321/mcp`，端口冲突时自动 `+1` 最多试 10 次，实际端口在 UI 上显示
+5. 决定是否开启 **「允许写工具」**（默认关；开启后 agent 才能创建/修改/删除数据）
+6. **不推荐**开启 **「允许危险工具」**（数据库导入/清空，会动整个 DB；执行前会自动备份到 `backups/`）
+
+### 客户端配置
+
+#### Claude Desktop
+
+`~/Library/Application Support/Claude/claude_desktop_config.json`（macOS）：
+
+```json
+{
+  "mcpServers": {
+    "persistent-task": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:7321/mcp"
+    }
+  }
+}
+```
+
+也可以直接在桌面 app 高级页面点 **「复制」** 按钮，已经按当前端口生成好。
+
+#### Cursor / 其他支持 streamable-http 的客户端
+
+URL 同样填 `http://127.0.0.1:7321/mcp`，type 设 `streamable-http` 或 `http`（视客户端而定）。
+
+#### 备用：stdio 模式（仅支持 stdio 的客户端）
+
+```json
+{
+  "mcpServers": {
+    "persistent-task": {
+      "command": "/绝对路径/到/persistent-task",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
+
+- 开发态二进制：`<repo>/src-tauri/target/debug/persistent-task`
+- 打包后（macOS）：`/Applications/持续任务.app/Contents/MacOS/持续任务`
+
+stdio 模式独立于 GUI 进程，不需要 GUI 开着；通过 SQLite WAL 与 GUI 并发安全。
+
+### 工具清单（31 个）
+
+| 域 | 工具 | 写权限 | 危险 |
+|---|---|---|---|
+| 元 | `ping` | — | — |
+| **Task** | `list_tasks` `get_task` `search_tasks` `get_today_tasks` `get_tasks_by_date_range` | — | — |
+| | `create_task` `update_task` `delete_task` `set_task_status` | ✅ | — |
+| | `schedule_task_for_date` `unschedule_task_from_date` `move_task_schedule` | ✅ | — |
+| | `reorder_tasks_for_date` `review_past_task` | ✅ | — |
+| **Tag** | `list_tags` `get_tag_tree` | — | — |
+| | `create_tag` `update_tag` `delete_tag` `move_tag` | ✅ | — |
+| **Pomodoro** | `list_pomodoros` | — | — |
+| | `log_pomodoro` `delete_pomodoro` | ✅ | — |
+| **Analytics** | `get_daily_stats` `get_tag_stats` `query_events` `count_events` | — | — |
+| **Admin** | `export_db` | — | — |
+| | `replace_db` `clear_all` | ✅ | ⚠️ |
+
+所有工具都用 camelCase 入参，输出是结构化 JSON（带 schema）。在 agent 里直接说"创建一条明天的任务"它会找到 `create_task` + `schedule_task_for_date` 自己组合调用。
+
+### Resources（5 个只读 URI）
+
+让 agent 在对话开头读取上下文，比一次性调多个工具更省 token：
+
+| URI | 类型 | 说明 |
+|---|---|---|
+| `task://today` | markdown | 今日所有任务（含跨天延续） |
+| `task://overdue` | markdown | 待处置的过期任务，配合 `review_past_task` 用 |
+| `tag://tree` | markdown | 标签树 |
+| `stats://summary` | json | 最近 30 天聚合（日维度 + 标签维度） |
+| `schema://types` | json | 数据模型 JSON Schema，便于 agent 自校验 |
+
+### 安全机制（中度方案）
+
+| 机制 | 行为 |
+|---|---|
+| 写权限闸 | 默认关。GUI「高级」里勾选「允许写工具」才放行 |
+| 危险权限闸 | 默认关。需要先勾「允许写工具」，再勾「允许危险工具」 |
+| 限流 | 写工具 ≤ 60 次/分钟，危险工具 ≤ 5 次/分钟（滑动窗口） |
+| 自动备份 | `replace_db` / `clear_all` 执行前先复制 DB 到 `<app_data_dir>/backups/persistent-task-<ts>.db`，保留最近 20 份 |
+| 审计日志 | 所有成功的写工具调用都会落 `events` 表（`type=mcp.tool.invoked`、`sessionId=mcp`），可用 `query_events` 反查"哪个 agent 改了什么" |
+| 绑定 | 只监听 `127.0.0.1`，不会被局域网访问 |
+| 并发 | SQLite WAL + `busy_timeout=5000`，GUI 和 MCP 可同时读写同一份 DB |
+
+### 故障排查
+
+- **端口冲突**：UI 显示的端口与你期望的不同。`7321` 被占用时会自动尝试 `7322`、`7323`...，确认 agent 端配置用了实际端口
+- **agent 调写工具拒绝**：错误信息会明确指向"请在桌面 app 的「高级」菜单中打开「允许写工具」"
+- **找不到 MCP 二进制（stdio 模式）**：用绝对路径；开发态在 `src-tauri/target/debug/persistent-task`
+- **修改了端口但服务没生效**：端口字段在服务运行时是灰色的，需要先停止服务再改
+
+### 实现位置
+
+- Rust 端 MCP server：`src-tauri/src/mcp/`
+  - `mod.rs` — 入口、WAL 启用、stdio 模式
+  - `server.rs` — `PersistentTaskMcpServer` + ServerHandler
+  - `control.rs` — HTTP 启停管理（端口自适应、独立 tokio runtime）
+  - `tools/` — 5 个子模块、31 个工具
+  - `resources.rs` — 5 个 Resources 生成
+  - `security.rs` — 滑动窗口限流 + 自动备份
+  - `audit.rs` — 写工具审计日志
+- 业务逻辑共享层：`src-tauri/src/commands/core.rs`（Tauri commands 和 MCP 工具都调它）
+- 前端「高级」页面：`src/routes/AdvancedPage.tsx`

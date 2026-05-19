@@ -118,6 +118,13 @@ impl AppState {
             CREATE INDEX IF NOT EXISTS idx_events_occurred  ON events(occurred_at);
             CREATE INDEX IF NOT EXISTS idx_events_entity    ON events(entity_type, entity_id);
             CREATE INDEX IF NOT EXISTS idx_events_session   ON events(session_id);
+
+            -- 应用设置（KV）。MCP 开关、端口、写权限等都放这里。
+            -- 用 SQLite 而不是 localStorage，是因为 Tauri 启动时要读它决定是否自启 MCP。
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
             "#,
         )?;
 

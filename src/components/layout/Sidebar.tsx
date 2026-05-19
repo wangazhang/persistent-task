@@ -3,6 +3,7 @@ import {
   BarChart3,
   Database,
   ListTodo,
+  Settings2,
   Tags,
   Timer,
   Trash2,
@@ -19,6 +20,7 @@ const NAV_ITEMS = [
   { to: "/pomodoro", path: "/pomodoro", label: "番茄时钟", icon: Timer },
   { to: "/stats", path: "/stats", label: "统计面板", icon: BarChart3 },
   { to: "/data", path: "/data", label: "数据", icon: Database },
+  { to: "/advanced", path: "/advanced", label: "高级", icon: Settings2 },
 ];
 
 async function clearAllData() {
