@@ -11,7 +11,7 @@
 use tauri::{
     image::Image,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, Runtime, WebviewUrl,
+    AppHandle, Emitter, LogicalSize, Manager, Monitor, PhysicalPosition, Runtime, WebviewUrl,
     WebviewWindowBuilder, WindowEvent,
 };
 
@@ -22,6 +22,33 @@ const POPUP_H: f64 = 520.0;
 const EDITOR_LABEL: &str = "task-editor";
 const EDITOR_W: f64 = 720.0;
 const EDITOR_H: f64 = 760.0;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PopupMonitor {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    scale_factor: f64,
+}
+
+impl PopupMonitor {
+    fn from_tauri(monitor: &Monitor) -> Self {
+        let pos = monitor.position();
+        let size = monitor.size();
+        Self {
+            x: pos.x as f64,
+            y: pos.y as f64,
+            width: size.width as f64,
+            height: size.height as f64,
+            scale_factor: monitor.scale_factor(),
+        }
+    }
+
+    fn contains(self, x: f64, y: f64) -> bool {
+        x >= self.x && x < self.x + self.width && y >= self.y && y < self.y + self.height
+    }
+}
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -139,20 +166,16 @@ pub fn open_task_editor<R: Runtime>(
     }
 
     let url = task_editor_url(&target);
-    let mut builder = WebviewWindowBuilder::new(
-        &app,
-        EDITOR_LABEL,
-        WebviewUrl::App(url.into()),
-    )
-    .title("任务编辑")
-    .inner_size(EDITOR_W, EDITOR_H)
-    .decorations(false)
-    .transparent(true)
-    .shadow(false)
-    .resizable(true)
-    .skip_taskbar(true)
-    .visible(true)
-    .focused(true);
+    let mut builder = WebviewWindowBuilder::new(&app, EDITOR_LABEL, WebviewUrl::App(url.into()))
+        .title("任务编辑")
+        .inner_size(EDITOR_W, EDITOR_H)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .resizable(true)
+        .skip_taskbar(true)
+        .visible(true)
+        .focused(true);
 
     // 主窗口可用 → 以其中心定位弹窗；否则 fallback 到屏幕居中。
     let manual_pos = compute_editor_center(&app);
@@ -191,7 +214,10 @@ fn compute_editor_center<R: Runtime>(app: &AppHandle<R>) -> Option<PhysicalPosit
     let popup_h_px = (EDITOR_H * scale) as i32;
     let cx = pos.x + (size.width as i32) / 2;
     let cy = pos.y + (size.height as i32) / 2;
-    Some(PhysicalPosition::new(cx - popup_w_px / 2, cy - popup_h_px / 2))
+    Some(PhysicalPosition::new(
+        cx - popup_w_px / 2,
+        cy - popup_h_px / 2,
+    ))
 }
 
 fn task_editor_url(target: &TaskEditorTarget) -> String {
@@ -207,19 +233,18 @@ fn task_editor_url(target: &TaskEditorTarget) -> String {
 
 fn handle_tray_event<R: Runtime>(app: &AppHandle<R>, event: &TrayIconEvent) {
     match event {
-        // 左键松开 → 切换 popup 显示
+        // 左键松开 → 切换 popup 显示。
+        // 注意：用 event 顶层的 `position`（PhysicalPosition<f64>，文档明确是物理坐标）
+        // 而不是 `rect.position`。rect.position 是 tauri::Position enum（Logical 或
+        // Physical 两种 variant），如果跨屏点击且变体是 Logical，把数值直接喂给
+        // monitor_from_point 会查错屏 —— 之前定位漂移的根因就在这。
         TrayIconEvent::Click {
             button: MouseButton::Left,
             button_state: MouseButtonState::Up,
-            rect,
+            position,
             ..
         } => {
-            // rect.position 是 tauri::Position，要先转 Physical 取实际像素
-            let (ax, ay) = match rect.position {
-                tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
-                tauri::Position::Logical(p) => (p.x, p.y),
-            };
-            toggle_popup(app, ax, ay);
+            toggle_popup(app, position.x, position.y);
         }
         // 右键 → 兜底打开主窗口
         TrayIconEvent::Click {
@@ -247,52 +272,136 @@ fn toggle_popup<R: Runtime>(app: &AppHandle<R>, anchor_x: f64, anchor_y: f64) {
         return;
     }
 
-    // 用「点击的 tray icon 物理坐标」去查 monitor —— 这是跟随点击屏幕的关键。
-    // 之所以不用 window.current_monitor()：popup 是预创建的隐藏窗口，
-    // current_monitor 返回它"被创建那一瞬间"的屏幕，跨屏后会错位。
-    // anchor_* 已经是物理坐标（macOS 顶部状态栏 icon 区左上角）。
-    let target_monitor = app
-        .monitor_from_point(anchor_x, anchor_y)
+    let target_monitor = resolve_popup_monitor(app, anchor_x, anchor_y);
+    let popup_position = compute_tray_popup_position(anchor_x, anchor_y, target_monitor);
+
+    // 先定位再显示：macOS 在跨屏移动可见 window 时偶尔会闪一下旧位置。
+    // 实测序列 set_position → show 比 show → set_position 更稳。
+    let _ = window.set_position(popup_position);
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
+fn resolve_popup_monitor<R: Runtime>(
+    app: &AppHandle<R>,
+    anchor_x: f64,
+    anchor_y: f64,
+) -> Option<PopupMonitor> {
+    if let Ok(monitors) = app.available_monitors() {
+        let geometries: Vec<_> = monitors.iter().map(PopupMonitor::from_tauri).collect();
+        if let Some(monitor) = select_monitor_containing_point(&geometries, anchor_x, anchor_y) {
+            return Some(monitor);
+        }
+    }
+
+    app.monitor_from_point(anchor_x, anchor_y)
         .ok()
         .flatten()
-        .or_else(|| app.primary_monitor().ok().flatten());
+        .map(|m| PopupMonitor::from_tauri(&m))
+        .or_else(|| {
+            app.primary_monitor()
+                .ok()
+                .flatten()
+                .map(|m| PopupMonitor::from_tauri(&m))
+        })
+}
 
-    let scale_factor = target_monitor
-        .as_ref()
-        .map(|m| m.scale_factor())
-        .unwrap_or(2.0);
+fn select_monitor_containing_point(
+    monitors: &[PopupMonitor],
+    anchor_x: f64,
+    anchor_y: f64,
+) -> Option<PopupMonitor> {
+    monitors
+        .iter()
+        .copied()
+        .find(|monitor| monitor.contains(anchor_x, anchor_y))
+}
 
-    // 计算 popup 位置：以 icon 中心点为锚，水平居中，垂直紧贴 icon 下沿。
-    // popup 物理坐标 = anchor - popup_w/2 + icon_w/2，icon 高约 22 逻辑像素。
+fn compute_tray_popup_position(
+    anchor_x: f64,
+    anchor_y: f64,
+    target_monitor: Option<PopupMonitor>,
+) -> PhysicalPosition<i32> {
+    let scale_factor = target_monitor.map(|m| m.scale_factor).unwrap_or(2.0);
+
+    // 计算 popup 位置：以鼠标点击点为水平中心；纵向放在所在屏的顶部。
+    // macOS 状态栏 icon 永远贴着屏顶，所以以 monitor.top + iconH + gap 落点最稳。
     let popup_w_px = POPUP_W * scale_factor;
-    let icon_w_px = 22.0 * scale_factor;
     let icon_h_px = 22.0 * scale_factor;
     let gap_px = 4.0 * scale_factor;
 
-    let mut x = anchor_x + icon_w_px / 2.0 - popup_w_px / 2.0;
-    let mut y = anchor_y + icon_h_px + gap_px;
+    let mut x = anchor_x - popup_w_px / 2.0;
+    let mut y = target_monitor
+        .map(|m| m.y + icon_h_px + gap_px)
+        .unwrap_or(anchor_y + icon_h_px + gap_px);
 
-    // 屏幕边界保护：用刚才查到的 monitor 的几何（而不是 popup 当前所在屏），
-    // 保证跨屏切换时边界判断也跟着切换。
-    if let Some(monitor) = target_monitor.as_ref() {
-        let mon_size = monitor.size();
-        let mon_pos = monitor.position();
-        let max_x = (mon_pos.x as f64) + (mon_size.width as f64) - popup_w_px - 8.0 * scale_factor;
-        let min_x = (mon_pos.x as f64) + 8.0 * scale_factor;
+    // 屏幕边界保护：用点击点所在 monitor 的几何，而不是 popup 当前所在屏。
+    if let Some(monitor) = target_monitor {
+        let max_x = monitor.x + monitor.width - popup_w_px - 8.0 * scale_factor;
+        let min_x = monitor.x + 8.0 * scale_factor;
         if x > max_x {
             x = max_x;
         }
         if x < min_x {
             x = min_x;
         }
-        if y < (mon_pos.y as f64) {
-            y = mon_pos.y as f64;
+        if y < monitor.y {
+            y = monitor.y;
         }
     }
 
-    // 先定位再显示：macOS 在跨屏移动可见 window 时偶尔会闪一下旧位置。
-    // 实测序列 set_position → show 比 show → set_position 更稳。
-    let _ = window.set_position(PhysicalPosition::new(x, y));
-    let _ = window.show();
-    let _ = window.set_focus();
+    PhysicalPosition::new(x.round() as i32, y.round() as i32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        compute_tray_popup_position, select_monitor_containing_point, PopupMonitor, POPUP_W,
+    };
+
+    #[test]
+    fn selects_monitor_from_clicked_physical_point() {
+        let monitors = [
+            PopupMonitor {
+                x: 0.0,
+                y: 0.0,
+                width: 1920.0,
+                height: 1080.0,
+                scale_factor: 1.0,
+            },
+            PopupMonitor {
+                x: 1920.0,
+                y: 0.0,
+                width: 3024.0,
+                height: 1964.0,
+                scale_factor: 2.0,
+            },
+        ];
+
+        let selected = select_monitor_containing_point(&monitors, 2600.0, 20.0).unwrap();
+
+        assert_eq!(selected.x, 1920.0);
+        assert_eq!(selected.scale_factor, 2.0);
+    }
+
+    #[test]
+    fn popup_position_is_clamped_inside_clicked_monitor() {
+        let clicked_monitor = PopupMonitor {
+            x: 1920.0,
+            y: -400.0,
+            width: 3024.0,
+            height: 1964.0,
+            scale_factor: 2.0,
+        };
+
+        let pos = compute_tray_popup_position(2000.0, 15.0, Some(clicked_monitor));
+
+        assert_eq!(pos.x, 1936);
+        assert_eq!(pos.y, -348);
+        assert!(pos.x as f64 >= clicked_monitor.x + 8.0 * clicked_monitor.scale_factor);
+        assert!(
+            (pos.x as f64) + POPUP_W * clicked_monitor.scale_factor
+                <= clicked_monitor.x + clicked_monitor.width
+        );
+    }
 }
