@@ -10,6 +10,10 @@ rust-version = "1.77"
 name = "persistent_task_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "persistent-task"
+path = "src/main.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -23,3 +27,17 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1"
 parking_lot = "0.12"
+
+# MCP server stack — 仅在 `--mcp` 子命令模式下使用
+rmcp = { version = "1.7", features = [
+    "server",
+    "macros",
+    "transport-io",
+    "transport-streamable-http-server",
+] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "signal", "sync", "net"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+axum = "0.7"
+schemars = "1"
+dirs = "5"
+base64 = "0.22"

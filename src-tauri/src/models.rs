@@ -2,11 +2,12 @@
 //
 // serde 字段使用 camelCase，对外保持与前端 TS 类型一致，
 // 这样前端 invoke 时无需手动转换字段名。
+// JsonSchema 用于 rmcp 在 MCP `tools/list` 时自动产出 outputSchema。
 
 use serde::{Deserialize, Serialize};
 
 /// 任务状态。前端取值：todo / in_progress / suspended / done / archived
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
     Todo,
@@ -18,7 +19,7 @@ pub enum TaskStatus {
 }
 
 /// 任务优先级。前端取值：p0 / p1 / p2，缺省 = p2
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskPriority {
     P0,
@@ -32,7 +33,7 @@ impl Default for TaskPriority {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
     pub id: String,
@@ -63,7 +64,7 @@ pub struct Task {
     pub review_log: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Tag {
     pub id: String,
@@ -74,7 +75,7 @@ pub struct Tag {
     pub order: i32,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PomodoroType {
     Focus,
@@ -82,7 +83,7 @@ pub enum PomodoroType {
     LongBreak,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PomodoroSession {
     pub id: String,
@@ -164,14 +165,14 @@ impl PomodoroType {
 // ────────────────────────────────────────────────────────────────
 
 /// 事件来源：auto = store 中间件自动产出；manual = 显式 track() 调用
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum EventSource {
     Auto,
     Manual,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AnalyticsEvent {
     pub id: String,
@@ -187,7 +188,7 @@ pub struct AnalyticsEvent {
     pub props: serde_json::Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EventFilter {
     #[serde(default)]
@@ -208,7 +209,7 @@ pub struct EventFilter {
     pub offset: Option<i64>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum EventGroupBy {
     Day,
@@ -216,7 +217,7 @@ pub enum EventGroupBy {
     Type,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct EventCountRow {
     pub key: String,
     pub count: i64,
