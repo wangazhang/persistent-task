@@ -242,7 +242,12 @@ export function TrayMainBridge() {
     const taskStore = useTaskStore.getState();
     const patch = taskEditorDraftToTaskPatch(action.draft);
     if (action.kind === "create_task") {
-      taskStore.addTask({ title: action.draft.title, ...patch });
+      // 编辑窗口侧已生成 id 时透传过来,保证后续 update 能命中同一条记录
+      taskStore.addTask({
+        title: action.draft.title,
+        ...patch,
+        ...(action.newTaskId ? { id: action.newTaskId } : {}),
+      });
       return;
     }
     taskStore.updateTask(action.taskId, patch);

@@ -32,7 +32,7 @@ export interface TaskEditorDraft {
 }
 
 export type TaskEditorAction =
-  | { kind: "create_task"; draft: TaskEditorDraft }
+  | { kind: "create_task"; draft: TaskEditorDraft; newTaskId?: string }
   | { kind: "update_task"; taskId: string; draft: TaskEditorDraft };
 
 export interface TaskEditorState {
