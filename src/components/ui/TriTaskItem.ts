@@ -10,6 +10,13 @@
  */
 
 import { mergeAttributes, Node, wrappingInputRule } from "@tiptap/core";
+import type { EditorView } from "@tiptap/pm/view";
+import {
+  createSameLevelTaskMoveTransaction,
+  findTaskItemPosFromDocPos,
+  getSameLevelTaskDropSide,
+  type TaskDropSide,
+} from "./subtaskReorder";
 
 export type TriState = "todo" | "in_progress" | "done";
 
@@ -116,6 +123,97 @@ export const TriTaskItem = Node.create({
       const li = document.createElement("li");
       li.setAttribute("data-type", "taskItem");
 
+      // 桌面 Tauri 的 WebView 对 contenteditable 内 HTML5 drag/drop 支持不稳定,
+      // 这里用 pointer 事件自己计算目标兄弟节点,只提交同层级重排事务。
+      const handle = document.createElement("span");
+      handle.className = "tri-task-drag-handle";
+      handle.setAttribute("data-drag-handle", "");
+      handle.setAttribute("contenteditable", "false");
+      handle.setAttribute("draggable", "false");
+      handle.setAttribute("aria-label", "拖拽以调整顺序");
+      handle.setAttribute("title", "拖拽以调整顺序");
+      // lucide GripVertical:与项目其它图标统一
+      handle.innerHTML =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>';
+
+      const onPointerDown = (event: PointerEvent) => {
+        if (event.button !== 0 || typeof getPos !== "function") return;
+        event.preventDefault();
+        event.stopPropagation();
+        const sourcePos = getPos();
+        if (sourcePos == null) return;
+        const { view } = editor;
+        // 拖动中的反馈放到 body 浮层里,不直接给 taskItem 的 li 加 class。
+        // ProseMirror 会在指针事件中替换 NodeView DOM;外部浮层能避开这类刷新。
+        const feedback = createTaskDragFeedback(
+          view.dom.ownerDocument,
+          li.textContent?.trim() || "子任务"
+        );
+        const updateDropPreview = (clientX: number, clientY: number) => {
+          feedback.move(clientX, clientY);
+          const target = findDropTargetTask(view, clientX, clientY);
+          const side = target
+            ? getSameLevelTaskDropSide(
+                view.state.doc,
+                sourcePos,
+                target.pos,
+                target.side
+              )
+            : null;
+          if (!target || !side) {
+            feedback.hideLine();
+            return;
+          }
+          feedback.showLine(target.element, side);
+        };
+
+        const onPointerMove = (moveEvent: PointerEvent) => {
+          moveEvent.preventDefault();
+          updateDropPreview(moveEvent.clientX, moveEvent.clientY);
+        };
+        const finish = (upEvent: PointerEvent) => {
+          upEvent.preventDefault();
+          const target = findDropTargetTask(view, upEvent.clientX, upEvent.clientY);
+          const side = target
+            ? getSameLevelTaskDropSide(
+                view.state.doc,
+                sourcePos,
+                target.pos,
+                target.side
+              )
+            : null;
+          cleanup();
+          if (!target || !side) return;
+          const tr = createSameLevelTaskMoveTransaction(
+            view.state,
+            sourcePos,
+            target.pos,
+            side
+          );
+          if (tr) view.dispatch(tr.scrollIntoView());
+        };
+        const cancel = () => cleanup();
+        const cleanup = () => {
+          feedback.destroy();
+          window.removeEventListener("pointermove", onPointerMove);
+          window.removeEventListener("pointerup", finish);
+          window.removeEventListener("pointercancel", cancel);
+        };
+
+        // 先立即同步一次,让用户按下把手时立刻看到"已抓住"的反馈。
+        updateDropPreview(event.clientX, event.clientY);
+        window.addEventListener("pointermove", onPointerMove, { passive: false });
+        window.addEventListener("pointerup", finish, { once: true });
+        window.addEventListener("pointercancel", cancel, { once: true });
+      };
+      handle.addEventListener("pointerdown", onPointerDown);
+
+      const onHandleDragStart = (event: DragEvent) => {
+        // 只用 pointer 事件实现桌面端拖拽;禁用原生 HTML5 drag 避免 WebView 差异。
+        event.preventDefault();
+      };
+      handle.addEventListener("dragstart", onHandleDragStart);
+
       const label = document.createElement("label");
       label.contentEditable = "false";
       label.className = "tri-task-checkbox";
@@ -128,6 +226,7 @@ export const TriTaskItem = Node.create({
       label.appendChild(btn);
 
       const content = document.createElement("div");
+      li.appendChild(handle);
       li.appendChild(label);
       li.appendChild(content);
 
@@ -184,6 +283,8 @@ export const TriTaskItem = Node.create({
         },
         destroy() {
           label.removeEventListener("click", onClick);
+          handle.removeEventListener("pointerdown", onPointerDown);
+          handle.removeEventListener("dragstart", onHandleDragStart);
         },
       };
     };
@@ -226,5 +327,73 @@ export const TriTaskItem = Node.create({
     };
   },
 });
+
+function findDropTargetTask(
+  view: EditorView,
+  clientX: number,
+  clientY: number
+): { pos: number; side: TaskDropSide; element: HTMLElement } | null {
+  const element = view.dom.ownerDocument.elementFromPoint(clientX, clientY);
+  const target = element instanceof Element
+    ? element.closest('li[data-type="taskItem"]')
+    : null;
+  if (!(target instanceof HTMLElement) || !view.dom.contains(target)) return null;
+
+  let taskPos: number | null = null;
+  try {
+    const domPos = view.posAtDOM(target, 0);
+    taskPos = findTaskItemPosFromDocPos(view.state.doc, domPos);
+  } catch {
+    const coords = view.posAtCoords({ left: clientX, top: clientY });
+    taskPos = coords
+      ? findTaskItemPosFromDocPos(view.state.doc, coords.pos)
+      : null;
+  }
+  if (taskPos == null) {
+    const coords = view.posAtCoords({ left: clientX, top: clientY });
+    taskPos = coords ? findTaskItemPosFromDocPos(view.state.doc, coords.pos) : null;
+  }
+  if (taskPos == null) return null;
+
+  return { pos: taskPos, side: getDropSide(target, clientY), element: target };
+}
+
+function getDropSide(target: Element, clientY: number): TaskDropSide {
+  const rect = target.getBoundingClientRect();
+  return clientY < rect.top + rect.height / 2 ? "before" : "after";
+}
+
+function createTaskDragFeedback(doc: Document, label: string) {
+  const ghost = doc.createElement("div");
+  ghost.className = "tri-task-drag-ghost";
+  ghost.textContent = label;
+
+  const line = doc.createElement("div");
+  line.className = "tri-task-drop-line";
+  line.hidden = true;
+
+  doc.body.appendChild(ghost);
+  doc.body.appendChild(line);
+
+  return {
+    move(clientX: number, clientY: number) {
+      ghost.style.transform = `translate3d(${clientX + 12}px, ${clientY + 10}px, 0)`;
+    },
+    showLine(target: HTMLElement, side: TaskDropSide) {
+      const rect = target.getBoundingClientRect();
+      line.hidden = false;
+      line.style.left = `${rect.left + 22}px`;
+      line.style.top = `${(side === "before" ? rect.top : rect.bottom) - 1}px`;
+      line.style.width = `${Math.max(24, rect.width - 24)}px`;
+    },
+    hideLine() {
+      line.hidden = true;
+    },
+    destroy() {
+      ghost.remove();
+      line.remove();
+    },
+  };
+}
 
 export default TriTaskItem;

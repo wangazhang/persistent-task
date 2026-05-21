@@ -179,7 +179,9 @@ export const useTaskStore = create<TaskStoreState>()(
     const now = new Date().toISOString();
     const today = isoDate();
     const task: Task = {
-      id: uid("task-"),
+      // 允许调用方预生成 id(任务编辑窗口自动保存新任务时用),
+      // 这样上层在拿到 id 后还能继续 update 同一条记录而不会重复 create。
+      id: partial.id ?? uid("task-"),
       title: partial.title,
       description: partial.description ?? "",
       status: partial.status ?? "todo",

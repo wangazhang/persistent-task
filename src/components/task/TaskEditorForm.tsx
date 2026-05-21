@@ -64,24 +64,26 @@ interface TaskEditorFormProps {
   task?: Task | null;
   tags: Tag[];
   defaultDate?: string;
-  onCancel: () => void;
   onSave: (draft: TaskEditorDraft) => void | Promise<void>;
   className?: string;
   bodyClassName?: string;
-  actionsClassName?: string;
   header?: TaskEditorHeaderConfig;
+  /**
+   * 可选:外部传入一个 ref,组件会把"立刻冲刷一次未触发的自动保存"挂在 ref.current 上。
+   * 调用方(如独立窗口)在关闭前调用一下,可避免 300ms debounce 内未来得及落库的输入丢失。
+   */
+  flushRef?: { current: (() => void) | null };
 }
 
 export function TaskEditorForm({
   task,
   tags,
   defaultDate,
-  onCancel,
   onSave,
   className,
   bodyClassName,
-  actionsClassName,
   header,
+  flushRef,
 }: TaskEditorFormProps) {
   const [title, setTitle] = useState("");
   const [titleEditing, setTitleEditing] = useState(false);
@@ -95,6 +97,15 @@ export function TaskEditorForm({
   const [color, setColor] = useState<string | undefined>(undefined);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  // 最近一次成功自动保存的时间;用于在头部展示"已保存 HH:MM:SS"
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
+  // 自动保存基础设施:
+  //   - justLoadedRef:task 切换时置 true,下一次自动保存 effect 跳过(避免回写刚加载的快照)
+  //   - onSaveRef:让 effect 不必把 onSave 列进依赖,防止父组件每次 re-render 都触发"保存"
+  const justLoadedRef = useRef(true);
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
 
   useEffect(() => {
     if (task) {
@@ -120,6 +131,10 @@ export function TaskEditorForm({
     const initial = task ? task.scheduledDates : defaultDate ? [defaultDate] : [isoDate()];
     setAdvancedOpen(initial.length > 1 && !isContiguous(initial));
     setTitleEditing(false);
+    // 切换 task 后清掉之前那条任务的"已保存"提示
+    setLastSavedAt(null);
+    // 标记"刚刚加载",保证下一轮 auto-save effect 不会把刚 load 进来的快照再写回去
+    justLoadedRef.current = true;
   }, [task, defaultDate]);
 
   useEffect(() => {
@@ -141,7 +156,6 @@ export function TaskEditorForm({
 
   async function save() {
     if (!title.trim()) {
-      window.alert("任务标题不能为空。");
       return;
     }
 
@@ -159,6 +173,8 @@ export function TaskEditorForm({
         completedAt = null;
       }
     }
+    // 状态自动转移要同步回本地 UI,否则 StatusButtonGroup 还显示旧状态
+    if (nextStatus !== status) setStatus(nextStatus);
 
     const draft: TaskEditorDraft = {
       title: title.trim(),
@@ -171,10 +187,46 @@ export function TaskEditorForm({
       docs: cleanDocs(docs),
       ...(completedAt !== undefined ? { completedAt } : {}),
     };
-    await onSave(draft);
+    await onSaveRef.current(draft);
+    setLastSavedAt(new Date());
   }
 
-  const splitLayout = Boolean(bodyClassName || actionsClassName);
+  // 字段级自动保存:任意受控字段变更后 300ms idle 触发一次 onSave。
+  //   - 标题为空时不保存(等用户输入有效标题再说;不会创建"无标题任务")
+  //   - 上一次切换 task 后的首轮 effect 会被 justLoadedRef 拦下,避免回写刚 load 的快照
+  //   - task 切换会清掉尚未触发的 timer,防止把旧 task 的状态写到新 task
+  //   - 通过 flushRef 暴露"立刻冲刷"接口,关窗时同步触发,避免丢未到点的 debounce
+  const pendingDirtyRef = useRef(false);
+  useEffect(() => {
+    if (justLoadedRef.current) {
+      justLoadedRef.current = false;
+      pendingDirtyRef.current = false;
+      return;
+    }
+    if (!title.trim()) return;
+    pendingDirtyRef.current = true;
+    const timer = window.setTimeout(() => {
+      pendingDirtyRef.current = false;
+      void save();
+    }, 300);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, description, status, priority, tagIds, scheduledDates, color, docs]);
+
+  // 把"立刻冲刷"接口挂到外部 ref;关闭窗口前可调用以避免丢失最后一拨输入
+  useEffect(() => {
+    if (!flushRef) return;
+    flushRef.current = () => {
+      if (!pendingDirtyRef.current) return;
+      pendingDirtyRef.current = false;
+      void save();
+    };
+    return () => {
+      if (flushRef) flushRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flushRef, title, description, status, priority, tagIds, scheduledDates, color, docs]);
+
   const progress = parseTaskProgress(description);
 
   return (
@@ -215,8 +267,20 @@ export function TaskEditorForm({
                 {title.trim() || header.modeLabel}
               </button>
             )}
-            <div className="mt-0.5 text-[11px] text-ink-400">
-              {header.subtitle ?? "独立任务窗口"}
+            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-400">
+              <span>{header.subtitle ?? "独立任务窗口"}</span>
+              {lastSavedAt && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span
+                    data-task-editor-section="saved-indicator"
+                    className="text-ink-500"
+                    title={`上一次自动保存:${lastSavedAt.toLocaleString()}`}
+                  >
+                    已保存 {formatSavedTime(lastSavedAt)}
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
@@ -434,7 +498,7 @@ export function TaskEditorForm({
         </div>
 
         <div data-task-editor-section="description">
-          <div className="mb-1 flex items-center justify-between">
+          <div className="mb-1 flex items-center justify-between gap-2">
             <label className="block text-xs font-medium text-ink-500">
               任务简述（支持子任务：输入{" "}
               <code className="rounded bg-ink-100 px-1 text-[11px]">[]</code>{" "}
@@ -442,34 +506,30 @@ export function TaskEditorForm({
               <code className="rounded bg-ink-100 px-1 text-[11px]">[ ]</code>{" "}
               加空格自动转勾选框）
             </label>
-            {progress && (
-              <span
-                data-task-editor-section="description-progress"
-                className="shrink-0 text-[11px] text-ink-500"
-              >
-                {progress.done}/{progress.total} 子任务
-                {progress.inProgress > 0 ? ` · ${progress.inProgress} 进行中` : ""}
-              </span>
-            )}
+            <div className="flex shrink-0 items-center gap-2">
+              {/* 没有 header 时,把"已保存"提示放这里(modal 模式) */}
+              {!header && lastSavedAt && (
+                <span
+                  data-task-editor-section="saved-indicator"
+                  className="text-[11px] text-ink-500"
+                  title={`上一次自动保存:${lastSavedAt.toLocaleString()}`}
+                >
+                  已保存 {formatSavedTime(lastSavedAt)}
+                </span>
+              )}
+              {progress && (
+                <span
+                  data-task-editor-section="description-progress"
+                  className="text-[11px] text-ink-500"
+                >
+                  {progress.done}/{progress.total} 子任务
+                  {progress.inProgress > 0 ? ` · ${progress.inProgress} 进行中` : ""}
+                </span>
+              )}
+            </div>
           </div>
           <RichDescription value={description} onChange={setDescription} />
         </div>
-      </div>
-
-      <div
-        data-task-editor-section="actions"
-        className={cn(
-          "flex shrink-0 justify-end gap-2 border-t border-ink-200/70 pt-3",
-          !splitLayout && "mt-3",
-          actionsClassName
-        )}
-      >
-        <button className="btn-secondary" onClick={onCancel} type="button">
-          取消
-        </button>
-        <button className="btn-primary" onClick={save} type="button">
-          保存
-        </button>
       </div>
     </div>
   );
@@ -501,4 +561,9 @@ function cleanDocs(docs: TaskDoc[]): TaskDoc[] {
   return docs
     .map((d) => ({ id: d.id, title: d.title.trim(), url: d.url.trim() }))
     .filter((d) => d.url.length > 0);
+}
+
+/** HH:MM:SS（24h）;用于头部的"已保存 HH:MM:SS"小字提示 */
+function formatSavedTime(d: Date): string {
+  return d.toLocaleTimeString(undefined, { hour12: false });
 }

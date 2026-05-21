@@ -64,7 +64,13 @@ ok("subtask summary lives in description section", description < descriptionSumm
 ok("subtask summary appears above description editor", descriptionSummary < descriptionEditor);
 ok("subtask summary includes done and total", text.includes("{progress.done}/{progress.total} 子任务"));
 ok("subtask summary includes in-progress count", text.includes("{progress.inProgress} 进行中"));
-const actions = indexOf("actions section", 'data-task-editor-section="actions"');
+
+// 表单已改为字段级自动保存,底部不再有 actions / 保存 / 取消按钮
+ok("actions section removed (auto-save replaces explicit save)", !text.includes('data-task-editor-section="actions"'));
+ok("save button removed", !text.includes(">保存<"));
+ok("cancel button removed", !text.includes(">取消<"));
+ok("auto-save effect present", text.includes("justLoadedRef"));
+
 // docs section 已抽到独立组件 TaskDocsField；此处只验证组件挂载点
 const compactSections = ["title", "status-priority", "color", "tags", "schedule"];
 const compactSectionIndexes = compactSections.map((section) =>
@@ -76,7 +82,6 @@ ok(
   "description is the last editable section",
   Math.max(...compactSectionIndexes) < description
 );
-ok("description stays above fixed actions", description < actions);
 
 if (fail > 0) {
   console.log(`\n${fail} 项失败`);

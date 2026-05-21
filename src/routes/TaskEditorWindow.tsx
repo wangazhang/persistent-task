@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
@@ -19,6 +20,7 @@ import {
 } from "@/lib/taskEditorBridge";
 import { hideCurrentPopup } from "@/lib/trayBridge";
 import { useTransparentBody } from "@/lib/trayHooks";
+import { uid } from "@/lib/utils";
 
 function readInitialTarget(): TaskEditorTarget {
   if (typeof window === "undefined") return {};
@@ -28,8 +30,16 @@ function readInitialTarget(): TaskEditorTarget {
 export default function TaskEditorWindow() {
   const [target, setTarget] = useState<TaskEditorTarget>(() => readInitialTarget());
   const [state, setState] = useState<TaskEditorState | null>(null);
+  // 新建模式下,首次自动保存把 createdId 用上,之后切到 update_task。
+  // target 来自 query string,是只读的;用单独 ref 跟踪"本会话已创建的新任务 id"。
+  const createdIdRef = useRef<string | null>(null);
 
   useTransparentBody();
+
+  useEffect(() => {
+    // target 切换(用户在同一个 task-editor 窗口里打开了另一条任务)→ 清掉旧的 createdId
+    createdIdRef.current = null;
+  }, [target.taskId, target.defaultDate]);
 
   useEffect(() => {
     let un: (() => void) | undefined;
@@ -81,7 +91,10 @@ export default function TaskEditorWindow() {
 
   const task = useMemo(() => state?.task ?? null, [state]);
   const modeLabel = target.taskId ? "编辑任务" : "新建任务";
+  // 让 TaskEditorForm 挂"立刻冲刷"接口在这里;关窗前同步调一下,避免 300ms debounce 内丢输入。
+  const flushRef = useRef<(() => void) | null>(null);
   async function close() {
+    flushRef.current?.();
     await hideCurrentPopup();
   }
 
@@ -102,24 +115,30 @@ export default function TaskEditorWindow() {
   }
 
   async function save(draft: TaskEditorDraft) {
-    if (target.taskId) {
+    const existingId = target.taskId ?? createdIdRef.current;
+    if (existingId) {
       await sendTaskEditorAction({
         kind: "update_task",
-        taskId: target.taskId,
+        taskId: existingId,
         draft,
       });
-    } else {
-      await sendTaskEditorAction({ kind: "create_task", draft });
+      return;
     }
-    await close();
+    // 新建模式首次自动保存:本地先确定 id,送出 create_task,后续切到 update。
+    const newId = uid("task-");
+    createdIdRef.current = newId;
+    await sendTaskEditorAction({
+      kind: "create_task",
+      draft,
+      newTaskId: newId,
+    });
   }
 
-  // 快捷键：
-  //   Esc       —— 焦点在可编辑控件上时先失焦（让用户先确认丢弃输入态），
-  //                否则直接关窗。富文本编辑器自身也用 Esc 收弹层
-  //                （斜杠菜单 / BubbleMenu），所以同样走 blur 让它接管。
-  //   Cmd/Ctrl+S —— 触发 TaskEditorForm 的保存按钮（form 自己负责校验 + onSave，
-  //                保存后会调用 close()）。
+  // 快捷键:
+  //   Esc       — 焦点在可编辑控件上时先失焦(给富文本编辑器自身的弹层让路),
+  //               否则关窗(改动已经被自动保存了,关窗不会丢)。
+  //   Cmd/Ctrl+S — 自动保存已经在跑,这里仅作为"立刻关闭"的便捷快捷键;
+  //               关闭前不需要做任何强制冲刷,因为 onChange 已经触发了 debounce 的最后一轮。
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -138,12 +157,7 @@ export default function TaskEditorWindow() {
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        // 找 form 的「保存」按钮：actions section 内唯一一颗 btn-primary。
-        // 用 selector 而不是 ref：避免把命令式接口暴露穿过 TaskEditorForm。
-        const btn = document.querySelector<HTMLButtonElement>(
-          '[data-task-editor-section="actions"] button.btn-primary'
-        );
-        btn?.click();
+        void close();
       }
     }
     window.addEventListener("keydown", onKey);
@@ -179,7 +193,6 @@ export default function TaskEditorWindow() {
           <TaskEditorForm
             className="min-h-0 flex-1"
             bodyClassName="min-h-0 flex-1 overflow-y-auto px-4 py-3"
-            actionsClassName="shrink-0 border-t border-ink-200/70 bg-white px-4 py-3"
             header={{
               modeLabel,
               subtitle: "独立任务窗口",
@@ -189,8 +202,8 @@ export default function TaskEditorWindow() {
             task={task}
             tags={state.tags}
             defaultDate={target.defaultDate}
-            onCancel={() => void close()}
             onSave={save}
+            flushRef={flushRef}
           />
         )}
       </div>

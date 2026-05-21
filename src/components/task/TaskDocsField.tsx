@@ -5,7 +5,7 @@
  *   - 默认折叠：显示首个文档（标题或 URL）+ 文档数量徽标。
  *     单击 chip 在新窗口打开首个 URL。
  *   - 鼠标移入或点击「▾」按钮 → 弹出全部文档列表（仅标题文本，点击跳转）。
- *   - 列表每行尾部一枚编辑图标，点击切换为内联输入框编辑该条 title + url。
+ *   - 列表每行尾部一枚编辑图标，点击切换为内联输入框编辑该条 url + title。
  *   - 列表底部「添加文档」按钮新增一条空白文档（自动进入编辑态）。
  *
  * 状态由父组件托管（受控）：value: TaskDoc[]，onChange: (next) => void。
@@ -283,20 +283,21 @@ function DocEditRow({
   onDone: () => void;
   onDelete: () => void;
 }) {
-  const titleRef = useRef<HTMLInputElement>(null);
+  const urlRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    titleRef.current?.focus();
-    titleRef.current?.select();
+    // URL 放在首位并默认选中，匹配从外部文档直接复制链接后粘贴的操作习惯。
+    urlRef.current?.focus();
+    urlRef.current?.select();
   }, []);
 
   return (
     <div className="space-y-1 rounded-md border border-brand-200 bg-brand-50/40 p-1.5">
       <input
-        ref={titleRef}
+        ref={urlRef}
         className="input h-7 py-0 text-xs"
-        placeholder="标题（可选，例：Q3 OKR 草稿）"
-        value={doc.title}
-        onChange={(e) => onChange({ title: e.target.value })}
+        placeholder="https://..."
+        value={doc.url}
+        onChange={(e) => onChange({ url: e.target.value })}
         onKeyDown={(e) => {
           if (e.key === "Enter") onDone();
           if (e.key === "Escape") onDone();
@@ -304,9 +305,9 @@ function DocEditRow({
       />
       <input
         className="input h-7 py-0 text-xs"
-        placeholder="https://..."
-        value={doc.url}
-        onChange={(e) => onChange({ url: e.target.value })}
+        placeholder="标题（可选，例：Q3 OKR 草稿）"
+        value={doc.title}
+        onChange={(e) => onChange({ title: e.target.value })}
         onKeyDown={(e) => {
           if (e.key === "Enter") onDone();
           if (e.key === "Escape") onDone();
