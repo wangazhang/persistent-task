@@ -36,7 +36,7 @@ const VIEW_TABS: ViewTab[] = [
 ];
 
 export function TasksHub() {
-  const { view, date, status, tags, q, patch } = useTaskUrlState();
+  const { view, mode, date, status, tags, q, patch } = useTaskUrlState();
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
@@ -169,8 +169,10 @@ export function TasksHub() {
       {view === "week" && (
         <WeekView
           date={date}
+          mode={mode}
           tags={tags}
           onDateChange={(d) => patch({ date: d })}
+          onModeChange={(m) => patch({ mode: m })}
           onEdit={openEdit}
           onNewTaskOnDate={(d) => openCreate(d)}
         />
@@ -178,8 +180,10 @@ export function TasksHub() {
       {view === "month" && (
         <MonthView
           date={date}
+          mode={mode}
           tags={tags}
           onDateChange={(d) => patch({ date: d })}
+          onModeChange={(m) => patch({ mode: m })}
           onEdit={openEdit}
           onNewTaskOnDate={(d) => openCreate(d)}
         />
@@ -187,8 +191,10 @@ export function TasksHub() {
       {view === "year" && (
         <YearView
           date={date}
+          mode={mode}
           tags={tags}
           onDateChange={(d) => patch({ date: d })}
+          onModeChange={(m) => patch({ mode: m })}
           onSwitchToMonth={(d) => patch({ view: "month", date: d })}
           onEdit={openEdit}
           onNewTaskOnDate={(d) => openCreate(d)}

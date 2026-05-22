@@ -26,6 +26,7 @@ import { useNavigate } from "react-router-dom";
 import { TaskCard } from "@/components/task/TaskCard";
 import { ListColumnsToggle } from "@/components/ui/ListColumnsToggle";
 import type { Task, TaskPriority } from "@/lib/types";
+import type { TaskSurfaceMode } from "../useTaskUrlState";
 import { listColumnsClass, useListColumns } from "@/lib/listColumns";
 import { cn, isoDate } from "@/lib/utils";
 import { track } from "@/lib/analytics";
@@ -40,6 +41,8 @@ import {
 } from "./_helpers";
 import { DraggableTaskCard } from "./_DraggableTaskCard";
 import { DayTasksPopover } from "./_DayTasksPopover";
+import { TaskRangeView } from "./TaskRangeView";
+import { ViewFaceToggle } from "./_ViewFaceToggle";
 
 /**
  * Week View（纵向 7 行 + 行内任务也纵向堆叠）。
@@ -68,8 +71,10 @@ import { DayTasksPopover } from "./_DayTasksPopover";
 
 interface Props {
   date: string;
+  mode: TaskSurfaceMode;
   tags: string[];
   onDateChange: (iso: string) => void;
+  onModeChange: (mode: TaskSurfaceMode) => void;
   onEdit: (t: Task) => void;
   onNewTaskOnDate: (iso: string) => void;
 }
@@ -85,8 +90,10 @@ interface DayBucket {
 
 export function WeekView({
   date,
+  mode,
   tags,
   onDateChange,
+  onModeChange,
   onEdit,
   onNewTaskOnDate,
 }: Props) {
@@ -146,7 +153,7 @@ export function WeekView({
 
   // ---- 拖拽状态 ----
   const [activeTask, setActiveTask] = useState<Task | null>(null);
-  const [mode, setMode] = useState<"move" | "add" | "replace">("move");
+  const [dragMode, setDragMode] = useState<"move" | "add" | "replace">("move");
   const [popover, setPopover] = useState<
     | null
     | { iso: string; rect: DOMRect }
@@ -161,7 +168,7 @@ export function WeekView({
     const d = e.active.data.current;
     if (isDragTask(d)) {
       setActiveTask(tasks.find((t) => t.id === d.taskId) ?? null);
-      setMode(modeFromEvent(e.activatorEvent));
+      setDragMode(modeFromEvent(e.activatorEvent));
     }
   }
   function handleDragEnd(e: DragEndEvent) {
@@ -169,7 +176,7 @@ export function WeekView({
     const a = e.active.data.current;
     const o = e.over?.data.current;
     if (isDragTask(a) && isDropDay(o)) {
-      moveSchedule(a.taskId, a.fromDate, o.iso, mode);
+      moveSchedule(a.taskId, a.fromDate, o.iso, dragMode);
       setPopover(null);
     }
   }
@@ -223,13 +230,20 @@ export function WeekView({
         <div>
           <div className="text-sm font-medium text-ink-700">{title}</div>
           <div className="text-[11px] text-ink-400">
-            本周共 {weekTotals.total} 项排期，已完成 {weekTotals.done} 项 · 拖动卡片到其他行即可改期
-            <span className="ml-1 hidden sm:inline">
-              (Alt = 复制到 / Shift = 整体替换)
-            </span>
+            {mode === "time" ? (
+              <>
+                本周共 {weekTotals.total} 项排期，已完成 {weekTotals.done} 项 · 拖动卡片到其他行即可改期
+                <span className="ml-1 hidden sm:inline">
+                  (Alt = 复制到 / Shift = 整体替换)
+                </span>
+              </>
+            ) : (
+              "任务视图显示与本周有交集的任务"
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <ViewFaceToggle mode={mode} onChange={onModeChange} />
           <button
             type="button"
             className="rounded-lg border border-ink-200 p-1.5 text-ink-500 hover:bg-ink-50"
@@ -253,42 +267,54 @@ export function WeekView({
           >
             回到今天
           </button>
-          <ListColumnsToggle />
+          {mode === "time" && <ListColumnsToggle />}
         </div>
       </div>
 
-      {/* 7 行：每行一天 */}
-      <div className="flex flex-col gap-2">
-        {days.map((day) => {
-          const iso = format(day, "yyyy-MM-dd");
-          const bucket = buckets.get(iso)!;
-          return (
-            <WeekRow
-              key={iso}
-              day={day}
-              iso={iso}
-              bucket={bucket}
-              isSelected={iso === date}
-              onSelect={() => onDateChange(iso)}
-              onEdit={onEdit}
-              onNewTask={() => onNewTaskOnDate(iso)}
-              onQuickAdd={(title, priority) =>
-                addTask({
-                  title,
-                  scheduledDates: [iso],
-                  priority,
-                  tagIds: tags.length === 1 ? [tags[0]] : [],
-                })
-              }
-              onStartPomodoro={startPomodoroFor}
-              onOpenPopover={(iso, rect) => {
-                track("ui.popover.open", { popover: "day-tasks", date: iso });
-                setPopover({ iso, rect });
-              }}
-            />
-          );
-        })}
-      </div>
+      {mode === "tasks" ? (
+        <TaskRangeView
+          rangeKind="week"
+          date={date}
+          tags={tags}
+          onEdit={onEdit}
+          onStartPomodoro={startPomodoroFor}
+          onNewTaskOnDate={onNewTaskOnDate}
+        />
+      ) : (
+        <div className="task-surface">
+          <div className="task-surface-face flex flex-col gap-2">
+            {days.map((day) => {
+              const iso = format(day, "yyyy-MM-dd");
+              const bucket = buckets.get(iso)!;
+              return (
+                <WeekRow
+                  key={iso}
+                  day={day}
+                  iso={iso}
+                  bucket={bucket}
+                  isSelected={iso === date}
+                  onSelect={() => onDateChange(iso)}
+                  onEdit={onEdit}
+                  onNewTask={() => onNewTaskOnDate(iso)}
+                  onQuickAdd={(title, priority) =>
+                    addTask({
+                      title,
+                      scheduledDates: [iso],
+                      priority,
+                      tagIds: tags.length === 1 ? [tags[0]] : [],
+                    })
+                  }
+                  onStartPomodoro={startPomodoroFor}
+                  onOpenPopover={(iso, rect) => {
+                    track("ui.popover.open", { popover: "day-tasks", date: iso });
+                    setPopover({ iso, rect });
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <DragOverlay dropAnimation={null}>
         {activeTask ? (
@@ -297,14 +323,14 @@ export function WeekView({
             <span
               className={cn(
                 "pointer-events-none absolute -right-2 -bottom-2 rounded px-1.5 py-0.5 text-[10px] font-medium text-white shadow",
-                mode === "replace"
+                dragMode === "replace"
                   ? "bg-rose-500"
-                  : mode === "add"
+                  : dragMode === "add"
                   ? "bg-amber-500"
                   : "bg-brand-500"
               )}
             >
-              {mode === "replace" ? "替换" : mode === "add" ? "追加" : "改期"}
+              {dragMode === "replace" ? "替换" : dragMode === "add" ? "追加" : "改期"}
             </span>
           </div>
         ) : null}

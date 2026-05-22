@@ -30,12 +30,11 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { TaskCard } from "@/components/task/TaskCard";
 import type { Task } from "@/lib/types";
+import type { TaskSurfaceMode } from "../useTaskUrlState";
 import { cn, isoDate } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { useTaskStore } from "@/store/taskStore";
 import { usePomodoroStore } from "@/store/pomodoroStore";
-import { DaySection } from "./_DaySection";
-import { MonthSection } from "./_MonthSection";
 import {
   isDragTask,
   isDropDay,
@@ -47,18 +46,20 @@ import {
 import { TaskBar } from "./_TaskBar";
 import { useWeekBars } from "./_monthBars";
 import { DayTasksPopover } from "./_DayTasksPopover";
+import { TaskRangeView } from "./TaskRangeView";
+import { ViewFaceToggle } from "./_ViewFaceToggle";
 
 /**
  * Month View：
- *   上 = 6×7 月历网格（DayCell 都是 droppable）
- *   下 = 选中日详情（DaySection，active 区任务卡可拖到上方任意一天）
+ *   时间视图 = 6×7 月历网格（DayCell 都是 droppable）
+ *   任务视图 = 当前月份有交集的任务集合（单列 / 双列 / 甘特）
  *
  * 拖拽语义：
  *   默认  move    源日移除 + 目标日新增（"改期到这一天"）
  *   Alt   add     保留源日 + 目标日新增（"也在这一天做"）
  *   Shift replace scheduledDates 重置为 [目标日]（"整体改期"）
  *
- * cursor 控制翻页位置（影响月历显示哪一个月），date 控制 DaySection 显示哪一天。
+ * cursor 控制翻页位置（影响月历显示哪一个月），date 控制选中日。
  * 翻页只动 cursor，不动 date，避免"翻一下，选中日跑了"的不可预期感。
  */
 
@@ -73,16 +74,20 @@ function PointerEventsGuard({ children }: { children: React.ReactNode }) {
 
 interface Props {
   date: string;
+  mode: TaskSurfaceMode;
   tags: string[];
   onDateChange: (iso: string) => void;
+  onModeChange: (mode: TaskSurfaceMode) => void;
   onEdit: (t: Task) => void;
   onNewTaskOnDate: (iso: string) => void;
 }
 
 export function MonthView({
   date,
+  mode,
   tags,
   onDateChange,
+  onModeChange,
   onEdit,
   onNewTaskOnDate,
 }: Props) {
@@ -129,7 +134,7 @@ export function MonthView({
   // ---- 拖拽状态 ----
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   // 修饰键在 dragStart 时锁定；松手前改键无效（避免视觉反馈与最终结果错位）
-  const [mode, setMode] = useState<"move" | "add" | "replace">("move");
+  const [dragMode, setDragMode] = useState<"move" | "add" | "replace">("move");
 
   // 框选状态
   const [dragSel, setDragSel] = useState<
@@ -148,15 +153,6 @@ export function MonthView({
     | null
     | { iso: string; rect: DOMRect }
   >(null);
-  // 月历下方面板视图：本日（DaySection）/ 本月（MonthSection）
-  const [panel, setPanel] = useState<"day" | "month">("day");
-  // 标签过滤后的"本月可见任务"——MonthSection 只读这部分
-  const filteredMonthTasks = useMemo(() => {
-    if (!tagFilter) return tasks;
-    return tasks.filter((t) =>
-      t.tagIds.some((id) => tagFilter.has(id))
-    );
-  }, [tasks, tagFilter]);
   const addTask = useTaskStore((s) => s.addTask);
   const updateTask = useTaskStore((s) => s.updateTask);
 
@@ -209,7 +205,7 @@ export function MonthView({
     const d = e.active.data.current;
     if (isDragTask(d)) {
       setActiveTask(tasks.find((t) => t.id === d.taskId) ?? null);
-      setMode(modeFromEvent(e.activatorEvent));
+      setDragMode(modeFromEvent(e.activatorEvent));
     }
   }
   function handleDragEnd(e: DragEndEvent) {
@@ -217,7 +213,7 @@ export function MonthView({
     const a = e.active.data.current;
     const o = e.over?.data.current;
     if (isDragTask(a) && isDropDay(o)) {
-      moveSchedule(a.taskId, a.fromDate, o.iso, mode);
+      moveSchedule(a.taskId, a.fromDate, o.iso, dragMode);
       setPopover(null);
     }
   }
@@ -239,6 +235,8 @@ export function MonthView({
     >
       <HeaderBar
         title={format(cursor, "yyyy 年 M 月")}
+        mode={mode}
+        onModeChange={onModeChange}
         onPrev={() => setCursor((d) => subMonths(d, 1))}
         onNext={() => setCursor((d) => addMonths(d, 1))}
         onToday={() => {
@@ -248,6 +246,17 @@ export function MonthView({
         }}
       />
 
+      {mode === "tasks" ? (
+        <TaskRangeView
+          rangeKind="month"
+          date={format(cursor, "yyyy-MM-dd")}
+          tags={tags}
+          onEdit={onEdit}
+          onStartPomodoro={startPomodoroFor}
+          onNewTaskOnDate={onNewTaskOnDate}
+        />
+      ) : (
+        <>
       {/* 月历网格 */}
       <div className="mb-1 grid grid-cols-7 gap-1.5 text-center text-xs font-medium text-ink-400">
         {["一", "二", "三", "四", "五", "六", "日"].map((w) => (
@@ -363,51 +372,6 @@ export function MonthView({
         </div>
       </PointerEventsGuard>
 
-      {/* 月历下方面板：本日 / 本月切换 */}
-      <div className="mt-6 inline-flex overflow-hidden rounded-lg border border-ink-200">
-        {(
-          [
-            { k: "day" as const, l: "本日" },
-            { k: "month" as const, l: "本月" },
-          ]
-        ).map(({ k, l }) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => setPanel(k)}
-            className={cn(
-              "px-3 py-1.5 text-xs transition-colors",
-              panel === k
-                ? "bg-brand-600 text-white"
-                : "bg-white text-ink-600 hover:bg-ink-50"
-            )}
-            aria-pressed={panel === k}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
-
-      {panel === "day" ? (
-        <DaySection
-          iso={date}
-          info={dayMap.get(date)}
-          filterActive={tagFilter !== null}
-          onEdit={onEdit}
-          onStartPomodoro={startPomodoroFor}
-          onNewTask={() => onNewTaskOnDate(date)}
-          enableDrag
-        />
-      ) : (
-        <MonthSection
-          monthAnchor={cursor}
-          tasks={filteredMonthTasks}
-          filterActive={tagFilter !== null}
-          onEdit={onEdit}
-          onStartPomodoro={startPomodoroFor}
-        />
-      )}
-
       {/*
         DragOverlay：跟随光标的拖拽预览，独立挂在 body 上（不会被 overflow 截断）。
         渲染一个"展示态" TaskCard（不传 dragHandleProps，光标点击不再触发拖拽）。
@@ -417,19 +381,19 @@ export function MonthView({
         {activeTask ? (
           <div className="relative w-72 cursor-grabbing">
             <TaskCard task={activeTask} isDragging />
-            <span
-              className={cn(
-                "pointer-events-none absolute -right-2 -bottom-2 rounded px-1.5 py-0.5 text-[10px] font-medium text-white shadow",
-                mode === "replace"
+              <span
+                className={cn(
+                  "pointer-events-none absolute -right-2 -bottom-2 rounded px-1.5 py-0.5 text-[10px] font-medium text-white shadow",
+                dragMode === "replace"
                   ? "bg-rose-500"
-                  : mode === "add"
+                  : dragMode === "add"
                   ? "bg-amber-500"
                   : "bg-brand-500"
               )}
             >
-              {mode === "replace"
+              {dragMode === "replace"
                 ? "替换"
-                : mode === "add"
+                : dragMode === "add"
                 ? "追加"
                 : "改期"}
             </span>
@@ -479,27 +443,39 @@ export function MonthView({
           onNewTask={onNewTaskOnDate}
         />
       )}
+        </>
+      )}
     </DndContext>
   );
 }
 
 function HeaderBar({
   title,
+  mode,
+  onModeChange,
   onPrev,
   onNext,
   onToday,
 }: {
   title: string;
+  mode: TaskSurfaceMode;
+  onModeChange: (mode: TaskSurfaceMode) => void;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
 }) {
   return (
     <div className="mb-3 flex items-center justify-between gap-2">
-      <div className="text-[11px] text-ink-400">
-        提示：拖动任务卡到日历格 = 改期 · Alt = 复制到 · Shift = 整体替换
+      <div>
+        <div className="text-sm font-medium text-ink-700">{title}</div>
+        <div className="text-[11px] text-ink-400">
+          {mode === "time"
+            ? "提示：拖动任务卡到日历格 = 改期 · Alt = 复制到 · Shift = 整体替换"
+            : "任务视图显示与本月有交集的任务"}
+        </div>
       </div>
       <div className="flex items-center gap-2">
+        <ViewFaceToggle mode={mode} onChange={onModeChange} />
         <button
           type="button"
           className="rounded-lg border border-ink-200 p-1.5 text-ink-500 hover:bg-ink-50"
@@ -508,9 +484,6 @@ function HeaderBar({
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <div className="min-w-[8rem] text-center text-sm font-medium text-ink-700">
-          {title}
-        </div>
         <button
           type="button"
           className="rounded-lg border border-ink-200 p-1.5 text-ink-500 hover:bg-ink-50"

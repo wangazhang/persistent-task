@@ -16,8 +16,10 @@ import { isoDate } from "@/lib/utils";
  */
 
 export type ViewMode = "today" | "week" | "month" | "year";
+export type TaskSurfaceMode = "time" | "tasks";
 
 const VIEW_VALUES: ViewMode[] = ["today", "week", "month", "year"];
+const MODE_VALUES: TaskSurfaceMode[] = ["time", "tasks"];
 const STATUS_VALUES: (TaskStatus | "all")[] = [
   "all",
   "todo",
@@ -29,6 +31,8 @@ const STATUS_VALUES: (TaskStatus | "all")[] = [
 
 export interface TaskUrlState {
   view: ViewMode;
+  /** 周/月/年内部的正反面：时间格子 or 当前范围任务集合；today 忽略 */
+  mode: TaskSurfaceMode;
   /** 当前选中日（yyyy-MM-dd）；today 视图忽略 */
   date: string;
   /** 状态过滤（all 表示不过滤） */
@@ -69,12 +73,21 @@ function parseView(sp: URLSearchParams): ViewMode {
   return "today";
 }
 
+function parseMode(sp: URLSearchParams, view: ViewMode): TaskSurfaceMode {
+  if (view === "today") return "time";
+  const raw = sp.get("mode");
+  return raw && MODE_VALUES.includes(raw as TaskSurfaceMode)
+    ? (raw as TaskSurfaceMode)
+    : "time";
+}
+
 export function useTaskUrlState(): TaskUrlState & {
   patch: (next: Partial<TaskUrlState>) => void;
 } {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const view = parseView(searchParams);
+  const mode = parseMode(searchParams, view);
   const date = searchParams.get("date") || isoDate();
 
   const statusRaw = searchParams.get("status");
@@ -95,7 +108,9 @@ export function useTaskUrlState(): TaskUrlState & {
           if (next.view !== undefined) {
             params.set("view", next.view);
             params.delete("grid");
+            if (next.view === "today") params.delete("mode");
           }
+          if (next.mode !== undefined) params.set("mode", next.mode);
           if (next.date !== undefined) params.set("date", next.date);
           // status：default "all" 时清掉，缩短 URL
           if (next.status !== undefined) {
@@ -121,5 +136,5 @@ export function useTaskUrlState(): TaskUrlState & {
     [setSearchParams]
   );
 
-  return { view, date, status, tags, q, patch };
+  return { view, mode, date, status, tags, q, patch };
 }

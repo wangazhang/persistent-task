@@ -28,12 +28,12 @@ import {
 } from "@dnd-kit/core";
 import { useNavigate } from "react-router-dom";
 import type { Task } from "@/lib/types";
+import type { TaskSurfaceMode } from "../useTaskUrlState";
 import { cn, isoDate } from "@/lib/utils";
 import { track } from "@/lib/analytics";
 import { usePomodoroStore } from "@/store/pomodoroStore";
 import { useTaskStore } from "@/store/taskStore";
 import { TaskCard } from "@/components/task/TaskCard";
-import { DaySection } from "./_DaySection";
 import { DayTasksPopover } from "./_DayTasksPopover";
 import {
   isDragTask,
@@ -43,6 +43,8 @@ import {
   useTagFilterSet,
   type DayInfo,
 } from "./_helpers";
+import { TaskRangeView } from "./TaskRangeView";
+import { ViewFaceToggle } from "./_ViewFaceToggle";
 
 /**
  * Year View：12 个迷你月热力图 + 选中日详情 + 双击日格弹任务浮窗。
@@ -52,8 +54,10 @@ import {
 
 interface Props {
   date: string;
+  mode: TaskSurfaceMode;
   tags: string[];
   onDateChange: (iso: string) => void;
+  onModeChange: (mode: TaskSurfaceMode) => void;
   onSwitchToMonth: (iso: string) => void;
   onEdit: (t: Task) => void;
   onNewTaskOnDate: (iso: string) => void;
@@ -61,8 +65,10 @@ interface Props {
 
 export function YearView({
   date,
+  mode,
   tags,
   onDateChange,
+  onModeChange,
   onSwitchToMonth,
   onEdit,
   onNewTaskOnDate,
@@ -82,7 +88,7 @@ export function YearView({
   }, [date]);
 
   const [activeTask, setActiveTask] = useState<Task | null>(null);
-  const [mode, setMode] = useState<"move" | "add" | "replace">("move");
+  const [dragMode, setDragMode] = useState<"move" | "add" | "replace">("move");
   const [popover, setPopover] = useState<
     | null
     | { iso: string; rect: DOMRect }
@@ -97,7 +103,7 @@ export function YearView({
     const d = e.active.data.current;
     if (isDragTask(d)) {
       setActiveTask(tasks.find((t) => t.id === d.taskId) ?? null);
-      setMode(modeFromEvent(e.activatorEvent));
+      setDragMode(modeFromEvent(e.activatorEvent));
     }
   }
   function handleDragEnd(e: DragEndEvent) {
@@ -105,7 +111,7 @@ export function YearView({
     const a = e.active.data.current;
     const o = e.over?.data.current;
     if (isDragTask(a) && isDropDay(o)) {
-      moveSchedule(a.taskId, a.fromDate, o.iso, mode);
+      moveSchedule(a.taskId, a.fromDate, o.iso, dragMode);
       setPopover(null);
     }
   }
@@ -146,7 +152,19 @@ export function YearView({
       onDragEnd={handleDragEnd}
     >
       <div>
-        <div className="mb-3 flex items-center justify-end gap-2">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div>
+            <div className="text-sm font-medium text-ink-700">
+              {format(cursor, "yyyy 年")}
+            </div>
+            <div className="text-[11px] text-ink-400">
+              {mode === "time"
+                ? "双击日期查看任务；点击月份标题进入月视图"
+                : "任务视图显示与本年有交集的任务，年甘特为只读总览"}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+          <ViewFaceToggle mode={mode} onChange={onModeChange} />
           <button
             type="button"
             className="rounded-lg border border-ink-200 p-1.5 text-ink-500 hover:bg-ink-50"
@@ -155,9 +173,6 @@ export function YearView({
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <div className="min-w-[6rem] text-center text-sm font-medium text-ink-700">
-            {format(cursor, "yyyy 年")}
-          </div>
           <button
             type="button"
             className="rounded-lg border border-ink-200 p-1.5 text-ink-500 hover:bg-ink-50"
@@ -178,33 +193,38 @@ export function YearView({
             回到今天
           </button>
         </div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {months.map((m) => (
-            <MiniMonth
-              key={m.toISOString()}
-              month={m}
-              dayMap={dayMap}
-              maxInYear={maxInYear}
-              selectedISO={date}
-              onClickDay={onDateChange}
-              onClickHeader={() => onSwitchToMonth(format(m, "yyyy-MM-dd"))}
-              onOpenPopover={(iso, rect) => {
-                track("ui.popover.open", { popover: "day-tasks", date: iso });
-                setPopover({ iso, rect });
-              }}
-            />
-          ))}
         </div>
 
-        <DaySection
-          iso={date}
-          info={dayMap.get(date)}
-          filterActive={tagFilter !== null}
-          onEdit={onEdit}
-          onStartPomodoro={startPomodoroFor}
-          onNewTask={() => onNewTaskOnDate(date)}
-        />
+        {mode === "tasks" ? (
+          <TaskRangeView
+            rangeKind="year"
+            date={format(cursor, "yyyy-MM-dd")}
+            tags={tags}
+            onEdit={onEdit}
+            onStartPomodoro={startPomodoroFor}
+            onNewTaskOnDate={onNewTaskOnDate}
+          />
+        ) : (
+          <div className="task-surface">
+            <div className="task-surface-face grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {months.map((m) => (
+                <MiniMonth
+                  key={m.toISOString()}
+                  month={m}
+                  dayMap={dayMap}
+                  maxInYear={maxInYear}
+                  selectedISO={date}
+                  onClickDay={onDateChange}
+                  onClickHeader={() => onSwitchToMonth(format(m, "yyyy-MM-dd"))}
+                  onOpenPopover={(iso, rect) => {
+                    track("ui.popover.open", { popover: "day-tasks", date: iso });
+                    setPopover({ iso, rect });
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <DragOverlay dropAnimation={null}>
