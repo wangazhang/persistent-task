@@ -1,18 +1,28 @@
-import { useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
-import { ChartGantt, Columns2, Plus, Rows3 } from "lucide-react";
-import { format, parseISO } from "date-fns";
+import { ChartGantt, Columns2, Rows3 } from "lucide-react";
+import {
+  differenceInCalendarDays,
+  endOfMonth,
+  format,
+  parseISO,
+  startOfMonth,
+} from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { TaskCard } from "@/components/task/TaskCard";
 import type { Task } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, isoDate } from "@/lib/utils";
 import { useTaskStore } from "@/store/taskStore";
+import type { TaskSurfaceMode } from "../useTaskUrlState";
 import { taskSorter, useTagFilterSet } from "./_helpers";
+import { ViewFaceToggle } from "./_ViewFaceToggle";
 import {
   buildGanttRows,
+  makeScrollableGanttRange,
   makeTaskTimeRange,
   resizeContinuousSchedule,
   shiftContinuousSchedule,
+  tasksIntersectingRange,
   type GanttSegment,
   type TaskRangeKind,
   type TaskTimeRange,
@@ -25,10 +35,12 @@ import {
 interface TaskRangeViewProps {
   rangeKind: TaskRangeKind;
   date: string;
+  mode: TaskSurfaceMode;
   tags: string[];
+  todayResetKey?: number;
+  onModeChange: (mode: TaskSurfaceMode) => void;
   onEdit: (task: Task) => void;
   onStartPomodoro: (task: Task) => void;
-  onNewTaskOnDate: (iso: string) => void;
 }
 
 const LAYOUT_OPTIONS: Array<{
@@ -62,68 +74,49 @@ function groupOf(task: Task): GroupKey | null {
 export function TaskRangeView({
   rangeKind,
   date,
+  mode,
   tags,
+  todayResetKey = 0,
+  onModeChange,
   onEdit,
   onStartPomodoro,
-  onNewTaskOnDate,
 }: TaskRangeViewProps) {
   const tasks = useTaskStore((s) => s.tasks);
   const tagFilter = useTagFilterSet(tags);
   const range = useMemo(() => makeTaskTimeRange(rangeKind, date), [rangeKind, date]);
-  const visibleTasks = useMemo(() => {
+  const filteredTasks = useMemo(() => {
     const passTag = (task: Task) =>
       !tagFilter || task.tagIds.some((id) => tagFilter.has(id));
     return tasks
-      .filter(
-        (task) =>
-          task.status !== "archived" &&
-          passTag(task) &&
-          task.scheduledDates.some(
-            (d) => d >= range.startISO && d <= range.endISO
-          )
-      )
+      .filter((task) => task.status !== "archived" && passTag(task))
       .sort(taskSorter);
-  }, [tasks, tagFilter, range.startISO, range.endISO]);
+  }, [tasks, tagFilter]);
+  const visibleTasks = useMemo(
+    () => tasksIntersectingRange(filteredTasks, range),
+    [filteredTasks, range]
+  );
   const [layout, setLayout] = useTaskViewLayout();
 
   return (
     <section className="task-surface">
-      <div className="task-surface-face">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-medium text-ink-700">
-              {rangeTitle(range)}
-            </div>
-            <div className="text-[11px] text-ink-400">
-              当前范围内共 {visibleTasks.length} 项任务
-              {layout === "gantt" && range.kind === "year"
-                ? " · 年甘特为只读总览"
-                : ""}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <LayoutToggle value={layout} onChange={setLayout} />
-            <button
-              type="button"
-              className="btn-secondary text-xs"
-              onClick={() => onNewTaskOnDate(range.startISO)}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              新建任务
-            </button>
-          </div>
+      <div className="task-surface-face task-surface-face-right">
+        {/* 任务维度自己的展示方式放在父级时间标题下方，避免重复出现“任务视图”标题。 */}
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <ViewFaceToggle mode={mode} onChange={onModeChange} />
+          <LayoutToggle value={layout} onChange={setLayout} />
         </div>
 
-        {visibleTasks.length === 0 ? (
+        {layout === "gantt" ? (
+          <RangeGantt
+            range={range}
+            tasks={filteredTasks}
+            todayResetKey={todayResetKey}
+            onEdit={onEdit}
+          />
+        ) : visibleTasks.length === 0 ? (
           <div className="rounded-xl border border-dashed border-ink-200 px-6 py-12 text-center text-sm text-ink-400">
             {tagFilter ? "当前标签筛选下没有任务" : "当前时间范围内没有任务"}
           </div>
-        ) : layout === "gantt" ? (
-          <RangeGantt
-            range={range}
-            tasks={visibleTasks}
-            onEdit={onEdit}
-          />
         ) : (
           <TaskRangeList
             tasks={visibleTasks}
@@ -146,7 +139,7 @@ function LayoutToggle({
 }) {
   return (
     <div
-      className="inline-flex overflow-hidden rounded-lg border border-ink-200 bg-white"
+      className="inline-flex overflow-hidden rounded-md border border-ink-200 bg-white"
       aria-label="任务展示方式"
     >
       {LAYOUT_OPTIONS.map(({ value: option, label, icon: Icon }) => {
@@ -157,15 +150,16 @@ function LayoutToggle({
             type="button"
             onClick={() => onChange(option)}
             className={cn(
-              "inline-flex h-8 items-center gap-1.5 px-2.5 text-xs transition-colors",
+              "inline-flex h-6 w-8 items-center justify-center transition-colors",
               active
-                ? "bg-ink-800 text-white"
+                ? "bg-brand-600 text-white"
                 : "bg-white text-ink-500 hover:bg-ink-50 hover:text-ink-700"
             )}
+            aria-label={label}
             aria-pressed={active}
+            title={label}
           >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
+            <Icon className="h-3 w-3" />
           </button>
         );
       })}
@@ -239,21 +233,60 @@ function TaskRangeList({
 function RangeGantt({
   range,
   tasks,
+  todayResetKey,
   onEdit,
 }: {
   range: TaskTimeRange;
   tasks: Task[];
+  todayResetKey: number;
   onEdit: (task: Task) => void;
 }) {
   const updateTask = useTaskStore((s) => s.updateTask);
-  const rows = useMemo(() => buildGanttRows(tasks, range), [tasks, range]);
+  const timelineRange = useMemo(() => makeScrollableGanttRange(range), [range]);
+  const rows = useMemo(
+    () => buildGanttRows(tasks, timelineRange),
+    [tasks, timelineRange]
+  );
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const canEditGantt = range.kind !== "year";
+  const timelineWidth = `${(timelineRange.ticks.length / range.ticks.length) * 100}%`;
+  const todayISO = isoDate();
+  const todayOffset = timelineOffset(timelineRange, todayISO);
+  const todayLineLeft =
+    todayOffset == null ? null : `${(todayOffset / timelineRange.ticks.length) * 100}%`;
+
+  useLayoutEffect(() => {
+    // 预载前后时间段后，当前范围包含今天时优先把今天线带回视口。
+    const frame = window.requestAnimationFrame(() => {
+      const scroll = timelineScrollRef.current;
+      const timeline = timelineRef.current;
+      if (!scroll || !timeline) return;
+      const targetISO = isDateInsideRange(todayISO, range)
+        ? todayISO
+        : range.startISO;
+      scrollTimelineToDate(
+        scroll,
+        timeline,
+        timelineRange,
+        targetISO,
+        targetISO === todayISO ? "center" : "start"
+      );
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    range.startISO,
+    range.endISO,
+    rows.length,
+    timelineRange,
+    todayISO,
+    todayResetKey,
+  ]);
 
   function deltaFromPointer(startX: number, currentX: number): number {
     const rect = timelineRef.current?.getBoundingClientRect();
     if (!rect) return 0;
-    const unit = rect.width / range.ticks.length;
+    const unit = rect.width / timelineRange.ticks.length;
     return Math.round((currentX - startX) / unit);
   }
 
@@ -294,11 +327,19 @@ function RangeGantt({
     window.addEventListener("mouseup", onUp);
   }
 
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-ink-200 px-6 py-12 text-center text-sm text-ink-400">
+        当前甘特时间轴内没有任务
+      </div>
+    );
+  }
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-ink-200 bg-white">
+    <div className="overflow-hidden rounded-xl border border-ink-200 bg-white">
       <div
-        className="grid min-w-[760px]"
-        style={{ gridTemplateColumns: "minmax(13rem, 18rem) minmax(32rem, 1fr)" }}
+        className="grid"
+        style={{ gridTemplateColumns: "minmax(13rem, 18rem) minmax(0, 1fr)" }}
       >
         <div className="border-r border-ink-100 bg-ink-50/60">
           <div className="flex h-9 items-center border-b border-ink-100 px-3 text-xs font-medium text-ink-500">
@@ -329,26 +370,42 @@ function RangeGantt({
             </button>
           ))}
         </div>
-        <div ref={timelineRef} className="min-w-0">
-          <GanttTicks range={range} />
-          {rows.map(({ task, segments }) => (
-            <div
-              key={task.id}
-              className="relative h-11 border-b border-ink-100"
-              style={timelineGridStyle(range.ticks.length)}
-            >
-              {segments.map((segment, index) => (
-                <GanttBar
-                  key={`${task.id}-${index}-${segment.startIndex}-${segment.endIndex}`}
-                  task={task}
-                  segment={segment}
-                  total={range.ticks.length}
-                  editable={canEditGantt && segment.editable}
-                  onDrag={startSegmentDrag}
-                />
-              ))}
-            </div>
-          ))}
+        <div ref={timelineScrollRef} className="min-w-0 overflow-x-auto">
+          <div
+            ref={timelineRef}
+            className="relative min-w-full"
+            style={{ width: timelineWidth }}
+          >
+            <GanttTicks range={timelineRange} />
+            {rows.map(({ task, segments }) => (
+              <div
+                key={task.id}
+                className="relative h-11 border-b border-ink-100"
+                style={timelineGridStyle(timelineRange.ticks.length)}
+              >
+                {segments.map((segment, index) => (
+                  <GanttBar
+                    key={`${task.id}-${index}-${segment.startIndex}-${segment.endIndex}`}
+                    task={task}
+                    segment={segment}
+                    total={timelineRange.ticks.length}
+                    editable={canEditGantt && segment.editable}
+                    onDrag={startSegmentDrag}
+                  />
+                ))}
+              </div>
+            ))}
+            {todayLineLeft && (
+              <div
+                className="pointer-events-none absolute inset-y-0 z-20 border-l border-rose-500/90"
+                style={{ left: todayLineLeft }}
+              >
+                <span className="absolute left-1 top-1 rounded bg-rose-500 px-1 py-0.5 text-[10px] font-medium leading-none text-white shadow-sm">
+                  今天
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -427,20 +484,54 @@ function GanttBar({
   );
 }
 
-function rangeTitle(range: TaskTimeRange): string {
-  if (range.kind === "week") {
-    return `${format(parseISO(range.startISO), "yyyy 年 M 月 d 日", { locale: zhCN })} — ${format(parseISO(range.endISO), "M 月 d 日", { locale: zhCN })}`;
-  }
-  if (range.kind === "month") {
-    return `${format(parseISO(range.startISO), "yyyy 年 M 月", { locale: zhCN })} 任务视图`;
-  }
-  return `${format(parseISO(range.startISO), "yyyy 年", { locale: zhCN })} 任务视图`;
+function timelineTickKey(range: TaskTimeRange, dateISO: string): string {
+  return range.unit === "month" ? dateISO.slice(0, 7) : dateISO;
+}
+
+function isDateInsideRange(dateISO: string, range: TaskTimeRange): boolean {
+  return dateISO >= range.startISO && dateISO <= range.endISO;
+}
+
+function timelineOffset(range: TaskTimeRange, dateISO: string): number | null {
+  if (!isDateInsideRange(dateISO, range)) return null;
+  const tick = timelineTickKey(range, dateISO);
+  const index = range.ticks.indexOf(tick);
+  if (index < 0) return null;
+  if (range.unit === "day") return index;
+
+  const date = parseISO(dateISO);
+  const monthStart = startOfMonth(date);
+  const monthDays = differenceInCalendarDays(endOfMonth(date), monthStart) + 1;
+  return index + differenceInCalendarDays(date, monthStart) / monthDays;
+}
+
+function scrollTimelineToDate(
+  scroll: HTMLDivElement,
+  timeline: HTMLDivElement,
+  range: TaskTimeRange,
+  dateISO: string,
+  align: "start" | "center"
+) {
+  const offset = timelineOffset(range, dateISO);
+  if (offset == null) return;
+  const unit = timeline.scrollWidth / range.ticks.length;
+  const rawLeft =
+    align === "center" ? unit * offset - scroll.clientWidth / 2 : unit * offset;
+  const maxLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+  scroll.scrollLeft = Math.min(Math.max(0, rawLeft), maxLeft);
 }
 
 function tickLabel(range: TaskTimeRange, tick: string, index: number): string {
-  if (range.unit === "month") return `${index + 1}月`;
-  const date = parseISO(tick);
-  if (range.kind === "week") return format(date, "EEE d", { locale: zhCN });
+  const date = parseISO(range.unit === "month" ? `${tick}-01` : tick);
+  if (range.unit === "month") {
+    return format(date, date.getMonth() === 0 ? "yyyy年 M月" : "M月", {
+      locale: zhCN,
+    });
+  }
+  if (range.kind === "week") return format(date, "M/d EEE", { locale: zhCN });
+  if (date.getDate() === 1) {
+    return format(date, "M月d日", { locale: zhCN });
+  }
   return index % 5 === 0 || index === range.ticks.length - 1
     ? format(date, "d")
     : "";

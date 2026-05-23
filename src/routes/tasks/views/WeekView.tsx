@@ -154,6 +154,7 @@ export function WeekView({
   // ---- 拖拽状态 ----
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [dragMode, setDragMode] = useState<"move" | "add" | "replace">("move");
+  const [todayResetKey, setTodayResetKey] = useState(0);
   const [popover, setPopover] = useState<
     | null
     | { iso: string; rect: DOMRect }
@@ -243,7 +244,6 @@ export function WeekView({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <ViewFaceToggle mode={mode} onChange={onModeChange} />
           <button
             type="button"
             className="rounded-lg border border-ink-200 p-1.5 text-ink-500 hover:bg-ink-50"
@@ -263,11 +263,13 @@ export function WeekView({
           <button
             type="button"
             className="btn-secondary ml-1 text-xs"
-            onClick={() => onDateChange(isoDate())}
+            onClick={() => {
+              setTodayResetKey((key) => key + 1);
+              onDateChange(isoDate());
+            }}
           >
             回到今天
           </button>
-          {mode === "time" && <ListColumnsToggle />}
         </div>
       </div>
 
@@ -275,45 +277,53 @@ export function WeekView({
         <TaskRangeView
           rangeKind="week"
           date={date}
+          mode={mode}
           tags={tags}
+          todayResetKey={todayResetKey}
+          onModeChange={onModeChange}
           onEdit={onEdit}
           onStartPomodoro={startPomodoroFor}
-          onNewTaskOnDate={onNewTaskOnDate}
         />
       ) : (
-        <div className="task-surface">
-          <div className="task-surface-face flex flex-col gap-2">
-            {days.map((day) => {
-              const iso = format(day, "yyyy-MM-dd");
-              const bucket = buckets.get(iso)!;
-              return (
-                <WeekRow
-                  key={iso}
-                  day={day}
-                  iso={iso}
-                  bucket={bucket}
-                  isSelected={iso === date}
-                  onSelect={() => onDateChange(iso)}
-                  onEdit={onEdit}
-                  onNewTask={() => onNewTaskOnDate(iso)}
-                  onQuickAdd={(title, priority) =>
-                    addTask({
-                      title,
-                      scheduledDates: [iso],
-                      priority,
-                      tagIds: tags.length === 1 ? [tags[0]] : [],
-                    })
-                  }
-                  onStartPomodoro={startPomodoroFor}
-                  onOpenPopover={(iso, rect) => {
-                    track("ui.popover.open", { popover: "day-tasks", date: iso });
-                    setPopover({ iso, rect });
-                  }}
-                />
-              );
-            })}
+        <>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <ViewFaceToggle mode={mode} onChange={onModeChange} />
+            <ListColumnsToggle />
           </div>
-        </div>
+          <div className="task-surface">
+            <div className="task-surface-face task-surface-face-left flex flex-col gap-2">
+              {days.map((day) => {
+                const iso = format(day, "yyyy-MM-dd");
+                const bucket = buckets.get(iso)!;
+                return (
+                  <WeekRow
+                    key={iso}
+                    day={day}
+                    iso={iso}
+                    bucket={bucket}
+                    isSelected={iso === date}
+                    onSelect={() => onDateChange(iso)}
+                    onEdit={onEdit}
+                    onNewTask={() => onNewTaskOnDate(iso)}
+                    onQuickAdd={(title, priority) =>
+                      addTask({
+                        title,
+                        scheduledDates: [iso],
+                        priority,
+                        tagIds: tags.length === 1 ? [tags[0]] : [],
+                      })
+                    }
+                    onStartPomodoro={startPomodoroFor}
+                    onOpenPopover={(iso, rect) => {
+                      track("ui.popover.open", { popover: "day-tasks", date: iso });
+                      setPopover({ iso, rect });
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        </>
       )}
 
       <DragOverlay dropAnimation={null}>

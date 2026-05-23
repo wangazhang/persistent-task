@@ -2,6 +2,7 @@
 import type { Task } from "@/lib/types";
 import {
   buildGanttRows,
+  makeScrollableGanttRange,
   makeTaskTimeRange,
   resizeContinuousSchedule,
   shiftContinuousSchedule,
@@ -46,6 +47,22 @@ eq("year range starts at Jan", year.startISO, "2026-01-01");
 eq("year range ends at Dec", year.endISO, "2026-12-31");
 eq("year range uses month unit", year.unit, "month");
 eq("year range has 12 ticks", year.ticks.length, 12);
+
+const scrollableWeek = makeScrollableGanttRange(
+  makeTaskTimeRange("week", "2026-05-21")
+);
+eq("week gantt preloads four earlier weeks", scrollableWeek.startISO, "2026-04-20");
+eq("week gantt preloads four later weeks", scrollableWeek.endISO, "2026-06-21");
+eq("week gantt timeline stays continuous by day", scrollableWeek.ticks.length, 63);
+
+const scrollableMonth = makeScrollableGanttRange(month);
+eq("month gantt preloads earlier months", scrollableMonth.startISO, "2026-03-01");
+eq("month gantt preloads later months", scrollableMonth.endISO, "2026-07-31");
+
+const scrollableYear = makeScrollableGanttRange(year);
+eq("year gantt preloads earlier year", scrollableYear.startISO, "2025-01-01");
+eq("year gantt preloads later year", scrollableYear.endISO, "2027-12-31");
+eq("year gantt timeline keeps month ticks", scrollableYear.ticks.length, 36);
 
 const tasks = [
   makeTask({ id: "before", scheduledDates: ["2026-04-20"] }),
@@ -97,6 +114,21 @@ eq(
   "year gantt maps visible dates to month columns and stays read-only",
   yearRows[0].segments.map((s) => ({ startIndex: s.startIndex, endIndex: s.endIndex, editable: s.editable })),
   [{ startIndex: 1, endIndex: 3, editable: false }]
+);
+
+const scrollableYearRows = buildGanttRows(
+  [
+    makeTask({
+      id: "scrollable-year-span",
+      scheduledDates: ["2025-12-20", "2027-01-10"],
+    }),
+  ],
+  scrollableYear
+);
+eq(
+  "scrollable year gantt maps months relative to the wider timeline",
+  scrollableYearRows[0].segments.map((s) => ({ startIndex: s.startIndex, endIndex: s.endIndex })),
+  [{ startIndex: 11, endIndex: 24 }]
 );
 
 eq(

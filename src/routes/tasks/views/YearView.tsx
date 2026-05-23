@@ -80,6 +80,7 @@ export function YearView({
   const dayMap = useDayMap(tasks, tagFilter);
 
   const [cursor, setCursor] = useState<Date>(() => new Date(date));
+  const [todayResetKey, setTodayResetKey] = useState(0);
   useEffect(() => {
     setCursor((cur) => {
       const sel = new Date(date);
@@ -164,7 +165,6 @@ export function YearView({
             </div>
           </div>
           <div className="flex items-center gap-2">
-          <ViewFaceToggle mode={mode} onChange={onModeChange} />
           <button
             type="button"
             className="rounded-lg border border-ink-200 p-1.5 text-ink-500 hover:bg-ink-50"
@@ -186,6 +186,7 @@ export function YearView({
             className="btn-secondary ml-1 text-xs"
             onClick={() => {
               const now = new Date();
+              setTodayResetKey((key) => key + 1);
               setCursor(now);
               onDateChange(isoDate(now));
             }}
@@ -199,31 +200,38 @@ export function YearView({
           <TaskRangeView
             rangeKind="year"
             date={format(cursor, "yyyy-MM-dd")}
+            mode={mode}
             tags={tags}
+            todayResetKey={todayResetKey}
+            onModeChange={onModeChange}
             onEdit={onEdit}
             onStartPomodoro={startPomodoroFor}
-            onNewTaskOnDate={onNewTaskOnDate}
           />
         ) : (
-          <div className="task-surface">
-            <div className="task-surface-face grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {months.map((m) => (
-                <MiniMonth
-                  key={m.toISOString()}
-                  month={m}
-                  dayMap={dayMap}
-                  maxInYear={maxInYear}
-                  selectedISO={date}
-                  onClickDay={onDateChange}
-                  onClickHeader={() => onSwitchToMonth(format(m, "yyyy-MM-dd"))}
-                  onOpenPopover={(iso, rect) => {
-                    track("ui.popover.open", { popover: "day-tasks", date: iso });
-                    setPopover({ iso, rect });
-                  }}
-                />
-              ))}
+          <>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <ViewFaceToggle mode={mode} onChange={onModeChange} />
             </div>
-          </div>
+            <div className="task-surface">
+              <div className="task-surface-face task-surface-face-left grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {months.map((m) => (
+                  <MiniMonth
+                    key={m.toISOString()}
+                    month={m}
+                    dayMap={dayMap}
+                    maxInYear={maxInYear}
+                    selectedISO={date}
+                    onClickDay={onDateChange}
+                    onClickHeader={() => onSwitchToMonth(format(m, "yyyy-MM-dd"))}
+                    onOpenPopover={(iso, rect) => {
+                      track("ui.popover.open", { popover: "day-tasks", date: iso });
+                      setPopover({ iso, rect });
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          </>
         )}
       </div>
 

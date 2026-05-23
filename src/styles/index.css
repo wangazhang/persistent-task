@@ -38,7 +38,16 @@
 
   .task-surface-face {
     transform-origin: center center;
-    animation: task-surface-flip-in 180ms ease-out;
+    backface-visibility: hidden;
+    animation: task-surface-flip-right 180ms ease-out;
+  }
+
+  .task-surface-face-right {
+    animation-name: task-surface-flip-right;
+  }
+
+  .task-surface-face-left {
+    animation-name: task-surface-flip-left;
   }
 
   .card {
@@ -67,14 +76,27 @@
   }
 }
 
-@keyframes task-surface-flip-in {
+@keyframes task-surface-flip-right {
   from {
     opacity: 0.75;
-    transform: rotateX(-7deg) translateY(3px);
+    /* 进入任务维度时向右翻，符合“时间在左、任务在右”的空间关系。 */
+    transform: rotateY(-7deg) translateX(3px);
   }
   to {
     opacity: 1;
-    transform: rotateX(0deg) translateY(0);
+    transform: rotateY(0deg) translateX(0);
+  }
+}
+
+@keyframes task-surface-flip-left {
+  from {
+    opacity: 0.75;
+    /* 回到时间维度时反向向左翻，避免只有进入甘特时有翻页感。 */
+    transform: rotateY(7deg) translateX(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: rotateY(0deg) translateX(0);
   }
 }
 

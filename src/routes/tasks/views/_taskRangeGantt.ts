@@ -1,7 +1,10 @@
 import {
   addDays,
   addMonths,
+  addWeeks,
+  addYears,
   differenceInCalendarDays,
+  differenceInCalendarMonths,
   eachDayOfInterval,
   endOfMonth,
   endOfWeek,
@@ -47,6 +50,33 @@ function sortedUniqueDates(dates: string[]): string[] {
   return Array.from(new Set(dates)).sort();
 }
 
+function daysRange(
+  kind: Exclude<TaskRangeKind, "year">,
+  start: Date,
+  end: Date
+): TaskTimeRange {
+  return {
+    kind,
+    startISO: iso(start),
+    endISO: iso(end),
+    unit: "day",
+    ticks: eachDayOfInterval({ start, end }).map(iso),
+  };
+}
+
+function monthsRange(start: Date, end: Date): TaskTimeRange {
+  const monthCount = differenceInCalendarMonths(end, start) + 1;
+  return {
+    kind: "year",
+    startISO: iso(start),
+    endISO: iso(end),
+    unit: "month",
+    ticks: Array.from({ length: monthCount }, (_, i) =>
+      format(addMonths(start, i), "yyyy-MM")
+    ),
+  };
+}
+
 export function makeTaskTimeRange(
   kind: TaskRangeKind,
   anchorISO: string
@@ -55,35 +85,36 @@ export function makeTaskTimeRange(
   if (kind === "week") {
     const start = startOfWeek(anchor, { weekStartsOn: 1 });
     const end = endOfWeek(anchor, { weekStartsOn: 1 });
-    return {
-      kind,
-      startISO: iso(start),
-      endISO: iso(end),
-      unit: "day",
-      ticks: eachDayOfInterval({ start, end }).map(iso),
-    };
+    return daysRange(kind, start, end);
   }
   if (kind === "month") {
     const start = startOfMonth(anchor);
     const end = endOfMonth(anchor);
-    return {
-      kind,
-      startISO: iso(start),
-      endISO: iso(end),
-      unit: "day",
-      ticks: eachDayOfInterval({ start, end }).map(iso),
-    };
+    return daysRange(kind, start, end);
   }
 
   const start = startOfYear(anchor);
   const end = endOfYear(anchor);
-  return {
-    kind,
-    startISO: iso(start),
-    endISO: iso(end),
-    unit: "month",
-    ticks: Array.from({ length: 12 }, (_, i) => format(addMonths(start, i), "yyyy-MM")),
-  };
+  return monthsRange(start, end);
+}
+
+export function makeScrollableGanttRange(focusRange: TaskTimeRange): TaskTimeRange {
+  const start = parseISO(focusRange.startISO);
+  const end = parseISO(focusRange.endISO);
+
+  if (focusRange.kind === "week") {
+    return daysRange("week", addWeeks(start, -4), addWeeks(end, 4));
+  }
+  if (focusRange.kind === "month") {
+    return daysRange(
+      "month",
+      startOfMonth(addMonths(start, -2)),
+      endOfMonth(addMonths(end, 2))
+    );
+  }
+
+  // 年甘特按月预载前后年份，横向浏览时仍保留月级别总览。
+  return monthsRange(addYears(start, -1), addYears(end, 1));
 }
 
 export function tasksIntersectingRange(
@@ -112,8 +143,8 @@ function dayIndex(dateISO: string, range: TaskTimeRange): number {
   return differenceInCalendarDays(parseISO(dateISO), parseISO(range.startISO));
 }
 
-function monthIndex(dateISO: string): number {
-  return parseISO(dateISO).getMonth();
+function monthIndex(dateISO: string, range: TaskTimeRange): number {
+  return differenceInCalendarMonths(parseISO(dateISO), parseISO(range.startISO));
 }
 
 function rangeDates(startISO: string, endISO: string): string[] {
@@ -188,8 +219,8 @@ function yearSegment(task: Task, range: TaskTimeRange): GanttSegment[] {
       taskId: task.id,
       startISO: start,
       endISO: end,
-      startIndex: monthIndex(start),
-      endIndex: monthIndex(end),
+      startIndex: monthIndex(start, range),
+      endIndex: monthIndex(end, range),
       editable: false,
     },
   ];

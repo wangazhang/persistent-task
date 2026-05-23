@@ -99,6 +99,7 @@ export function MonthView({
   const dayMap = useDayMap(tasks, tagFilter);
 
   const [cursor, setCursor] = useState<Date>(() => new Date(date));
+  const [todayResetKey, setTodayResetKey] = useState(0);
   // 选中日跨月时把 cursor 跟过去；翻页只改 cursor 不改 date
   useEffect(() => {
     setCursor((cur) => {
@@ -236,11 +237,11 @@ export function MonthView({
       <HeaderBar
         title={format(cursor, "yyyy 年 M 月")}
         mode={mode}
-        onModeChange={onModeChange}
         onPrev={() => setCursor((d) => subMonths(d, 1))}
         onNext={() => setCursor((d) => addMonths(d, 1))}
         onToday={() => {
           const now = new Date();
+          setTodayResetKey((key) => key + 1);
           setCursor(now);
           onDateChange(isoDate(now));
         }}
@@ -250,13 +251,20 @@ export function MonthView({
         <TaskRangeView
           rangeKind="month"
           date={format(cursor, "yyyy-MM-dd")}
+          mode={mode}
           tags={tags}
+          todayResetKey={todayResetKey}
+          onModeChange={onModeChange}
           onEdit={onEdit}
           onStartPomodoro={startPomodoroFor}
-          onNewTaskOnDate={onNewTaskOnDate}
         />
       ) : (
         <>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <ViewFaceToggle mode={mode} onChange={onModeChange} />
+          </div>
+          <div className="task-surface">
+            <div className="task-surface-face task-surface-face-left">
       {/* 月历网格 */}
       <div className="mb-1 grid grid-cols-7 gap-1.5 text-center text-xs font-medium text-ink-400">
         {["一", "二", "三", "四", "五", "六", "日"].map((w) => (
@@ -371,6 +379,8 @@ export function MonthView({
         })}
         </div>
       </PointerEventsGuard>
+            </div>
+          </div>
 
       {/*
         DragOverlay：跟随光标的拖拽预览，独立挂在 body 上（不会被 overflow 截断）。
@@ -452,14 +462,12 @@ export function MonthView({
 function HeaderBar({
   title,
   mode,
-  onModeChange,
   onPrev,
   onNext,
   onToday,
 }: {
   title: string;
   mode: TaskSurfaceMode;
-  onModeChange: (mode: TaskSurfaceMode) => void;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
@@ -475,7 +483,6 @@ function HeaderBar({
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <ViewFaceToggle mode={mode} onChange={onModeChange} />
         <button
           type="button"
           className="rounded-lg border border-ink-200 p-1.5 text-ink-500 hover:bg-ink-50"

@@ -30,15 +30,16 @@ export function ViewFaceToggle({ mode, onChange }: ViewFaceToggleProps) {
             type="button"
             onClick={() => onChange(value)}
             className={cn(
-              "inline-flex h-8 items-center gap-1.5 px-2.5 text-xs transition-colors",
+              "inline-flex h-8 w-10 items-center justify-center transition-colors",
               active
                 ? "bg-brand-600 text-white"
                 : "bg-white text-ink-500 hover:bg-ink-50 hover:text-ink-700"
             )}
+            aria-label={label}
             aria-pressed={active}
+            title={label}
           >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
+            <Icon className="h-4 w-4" />
           </button>
         );
       })}
