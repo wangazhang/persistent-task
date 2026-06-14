@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "默认能力：主窗口 + 托盘 popup",
-  "windows": ["main", "tray-popup", "task-editor"],
+  "description": "默认能力：主窗口 + 托盘 popup + task-editor + quick-record",
+  "windows": ["main", "tray-popup", "task-editor", "quick-record"],
   "permissions": [
     "core:default",
     "core:window:allow-hide",

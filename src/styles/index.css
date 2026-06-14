@@ -101,6 +101,47 @@
 }
 
 /* ────────────────────────────────────────────────────────────
+ * Quick Record 小窗 · Spotlight 风格
+ *   - 进入：从下方推入并轻微缩放，140ms 即可不打断思路
+ *   - 卡片：依次淡入；用 inline style 控制 delay
+ * ──────────────────────────────────────────────────────────── */
+@keyframes qr-window-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.qr-window-enter {
+  animation: qr-window-enter 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes qr-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.qr-card-enter {
+  animation: qr-card-enter 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes qr-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.qr-pulse {
+  animation: qr-pulse 1.4s ease-in-out infinite;
+}
+
+/* ────────────────────────────────────────────────────────────
  * TipTap (RichDescription) 视觉
  *   - 仅在 .tiptap 范围内生效，避免污染外部 markdown 渲染（暂未使用）
  *   - 子任务（GFM task list）：让 checkbox 与文本基线对齐，并提供

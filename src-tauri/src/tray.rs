@@ -23,9 +23,10 @@ const EDITOR_LABEL: &str = "task-editor";
 const EDITOR_W: f64 = 720.0;
 const EDITOR_H: f64 = 760.0;
 const QUICK_RECORD_LABEL: &str = "quick-record";
-// 比 task-editor 小：Spotlight 风格输入框，确认态会随卡片数量自适应（前端控制实际高度）
-const QUICK_RECORD_W: f64 = 560.0;
-const QUICK_RECORD_H: f64 = 440.0;
+// Spotlight 风格：宽屏入口，输入态 ≈ 输入框 + 短 footer，确认态需要装下若干卡片
+// 高度按"够展示 3-4 张卡片但不喧宾夺主"取 560；前端窗口体已自适应内容
+const QUICK_RECORD_W: f64 = 640.0;
+const QUICK_RECORD_H: f64 = 560.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PopupMonitor {
@@ -236,6 +237,8 @@ pub fn open_quick_record<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     .shadow(false)
     .resizable(false)
     .skip_taskbar(true)
+    // Spotlight 语义：浮在所有窗口之上、失焦不消失（用户切到浏览器查资料再回来）
+    .always_on_top(true)
     .visible(true)
     .focused(true);
 
