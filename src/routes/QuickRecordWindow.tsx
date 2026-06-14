@@ -21,6 +21,7 @@ import {
 } from "@/lib/aiParse";
 import {
   emitQuickRecordCommit,
+  emitQuickRecordGotoSettings,
   listenQuickRecordCommitted,
   type QuickRecordCommitDraft,
 } from "@/lib/quickRecordBridge";
@@ -183,6 +184,13 @@ export default function QuickRecordWindow() {
     // 保留 text 让用户改写
   }
 
+  async function handleGotoSettings() {
+    await emitQuickRecordGotoSettings();
+    if (!isTauri()) return;
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().hide();
+  }
+
   const selectedCount = drafts.filter((d) => d.selected).length;
 
   return (
@@ -312,9 +320,19 @@ export default function QuickRecordWindow() {
           </div>
           {error && (
             <div className="px-4 pb-2 text-sm text-rose-600">
-              {error === ERR_AI_NOT_CONFIGURED
-                ? "未配置 AI Key，请先到「高级」页设置 Anthropic API Key。"
-                : error}
+              {error === ERR_AI_NOT_CONFIGURED ? (
+                <div className="flex items-center justify-between gap-2">
+                  <span>未配置 AI Key，请先到「高级」页设置 Anthropic API Key。</span>
+                  <button
+                    onClick={handleGotoSettings}
+                    className="shrink-0 px-2.5 py-1 rounded-md bg-brand-600 text-white text-xs hover:bg-brand-700"
+                  >
+                    去设置
+                  </button>
+                </div>
+              ) : (
+                error
+              )}
             </div>
           )}
           <footer className="px-4 py-3 border-t border-ink-100 flex items-center justify-between">

@@ -14,6 +14,7 @@ import type { TaskPriority } from "./types";
 const QUICK_RECORD_LABEL = "quick-record";
 const EV_COMMIT = "quick-record:commit";
 const EV_COMMITTED = "quick-record:committed";
+const EV_GOTO_SETTINGS = "quick-record:goto-settings";
 
 /** AI 解析后的任务草稿（与 Rust commands::ai::ParsedTaskDraft 同构） */
 export interface ParsedTaskDraft {
@@ -97,4 +98,20 @@ export async function listenQuickRecordCommitted(
   return listen<QuickRecordCommittedPayload>(EV_COMMITTED, (e) =>
     handler(e.payload)
   );
+}
+
+// ── goto-settings: 小窗 → main ──
+
+export async function emitQuickRecordGotoSettings(): Promise<void> {
+  if (!isTauri()) return;
+  const { emitTo } = await import("@tauri-apps/api/event");
+  await emitTo("main", EV_GOTO_SETTINGS);
+}
+
+export async function listenQuickRecordGotoSettings(
+  handler: () => void
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen(EV_GOTO_SETTINGS, () => handler());
 }

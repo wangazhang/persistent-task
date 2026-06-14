@@ -31,6 +31,7 @@ import {
 import {
   emitQuickRecordCommitted,
   listenQuickRecordCommit,
+  listenQuickRecordGotoSettings,
   type QuickRecordCommitPayload,
 } from "@/lib/quickRecordBridge";
 import { planCommit } from "@/lib/quickRecordCommit";
@@ -172,6 +173,25 @@ export function TrayMainBridge() {
     let disposed = false;
     listenQuickRecordCommit((payload) => {
       void handleQuickRecordCommit(payload);
+    }).then((u) => {
+      if (disposed) u();
+      else un = u;
+    });
+    return () => {
+      disposed = true;
+      un?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // AI 快速录入：监听小窗「去设置」→ 跳「高级」页 + 让 main 前置
+  useEffect(() => {
+    if (!isTauri()) return;
+    let un: (() => void) | undefined;
+    let disposed = false;
+    listenQuickRecordGotoSettings(() => {
+      navRef.current("/advanced");
+      void focusMain();
     }).then((u) => {
       if (disposed) u();
       else un = u;
