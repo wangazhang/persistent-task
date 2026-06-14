@@ -101,10 +101,18 @@
 }
 
 /* ────────────────────────────────────────────────────────────
- * Quick Record 小窗 · Spotlight 风格
- *   - 进入：从下方推入并轻微缩放，140ms 即可不打断思路
- *   - 卡片：依次淡入；用 inline style 控制 delay
+ * Quick Record 小窗 · Spotlight + AI 风格
+ *
+ * 视觉语言：
+ *   - 入口按钮：永久流光边框（conic-gradient + mask 抠边）
+ *   - 弹窗：多色不饱和 halo（brand + violet + cyan），状态自适应
+ *   - 解析中：文案轮播 + shimmer 骨架 + halo 呼吸放大
+ *   - 卡片：title 显影 + chips stagger 入场 + selected 左侧 accent bar
+ *
+ * 动效原则：克制（200-260ms 主导），仅在传递信息时才动。
  * ──────────────────────────────────────────────────────────── */
+
+/* ── 1. 弹窗入场 ── */
 @keyframes qr-window-enter {
   from {
     opacity: 0;
@@ -119,27 +127,281 @@
   animation: qr-window-enter 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+/* ── 2. AI 多色 halo（弹窗外光圈，状态自适应）──
+ *
+ * 用 box-shadow 多层叠加。三个状态切类名即可：
+ *   .qr-halo-idle    输入态 baseline
+ *   .qr-halo-thinking 解析中（呼吸 + 强度↑）
+ *   .qr-halo-error   错误态（rose 染色）
+ *   .qr-halo-success 完成态（success 染色，逐渐淡出）
+ *
+ * 颜色取自项目 brand-500 #6366f1、violet-500 #8b5cf6、cyan-400 #22d3ee
+ * 饱和度统一压在 28% 以下，避免赛博朋克炫光。
+ */
+.qr-halo-idle {
+  box-shadow:
+    0 0 0 1px rgba(99, 102, 241, 0.18),
+    0 0 24px 0 rgba(99, 102, 241, 0.18),
+    0 12px 40px -8px rgba(99, 102, 241, 0.22),
+    0 24px 80px -12px rgba(139, 92, 246, 0.18),
+    0 32px 120px -16px rgba(34, 211, 238, 0.10);
+}
+.qr-halo-thinking {
+  animation: qr-halo-breathe 2.4s ease-in-out infinite;
+}
+@keyframes qr-halo-breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px rgba(99, 102, 241, 0.28),
+      0 0 32px 0 rgba(99, 102, 241, 0.26),
+      0 12px 48px -8px rgba(99, 102, 241, 0.30),
+      0 24px 96px -12px rgba(139, 92, 246, 0.24),
+      0 32px 140px -16px rgba(34, 211, 238, 0.14);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(99, 102, 241, 0.40),
+      0 0 56px 0 rgba(99, 102, 241, 0.40),
+      0 16px 72px -8px rgba(99, 102, 241, 0.42),
+      0 32px 140px -12px rgba(139, 92, 246, 0.34),
+      0 40px 180px -16px rgba(34, 211, 238, 0.20);
+  }
+}
+.qr-halo-error {
+  box-shadow:
+    0 0 0 1px rgba(244, 63, 94, 0.28),
+    0 0 28px 0 rgba(244, 63, 94, 0.24),
+    0 12px 40px -8px rgba(244, 63, 94, 0.28),
+    0 24px 80px -12px rgba(244, 63, 94, 0.16);
+}
+.qr-halo-success {
+  box-shadow:
+    0 0 0 1px rgba(16, 185, 129, 0.30),
+    0 0 32px 0 rgba(16, 185, 129, 0.30),
+    0 12px 48px -8px rgba(16, 185, 129, 0.32),
+    0 24px 80px -12px rgba(16, 185, 129, 0.18);
+  transition: box-shadow 600ms ease-out;
+}
+
+.qr-halo-idle,
+.qr-halo-error {
+  transition: box-shadow 360ms ease-out;
+}
+
+/* ── 3. 流光边框（入口按钮 + 输入按钮通用）──
+ *
+ * 关键技术：
+ *   - 用 conic-gradient 做一个旋转的色环，作为伪元素背景
+ *   - 用两层 mask（外圆 - 内圆）抠出仅边框那一圈，得到"光线沿边跑"
+ *   - mask-composite: xor 在 -webkit-mask-composite 下用 source-out
+ *
+ * 用法：
+ *   <button class="qr-magic-border">…</button>
+ *   或 <div class="qr-magic-border qr-magic-border--strong">  // hover/active
+ */
+@property --qr-magic-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+.qr-magic-border {
+  position: relative;
+  isolation: isolate;
+}
+.qr-magic-border::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--qr-magic-angle),
+    rgba(99, 102, 241, 0)        0deg,
+    rgba(99, 102, 241, 0.85)    60deg,
+    rgba(139, 92, 246, 0.95)   100deg,
+    rgba(34, 211, 238, 0.85)   140deg,
+    rgba(99, 102, 241, 0)      220deg,
+    rgba(99, 102, 241, 0)      360deg
+  );
+  /* 双 mask 抠边 */
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  /* 默认低调 */
+  opacity: 0.45;
+  animation: qr-magic-spin 5s linear infinite;
+  transition: opacity 200ms ease-out;
+}
+.qr-magic-border:hover::before,
+.qr-magic-border--strong::before {
+  opacity: 0.95;
+  animation-duration: 2.4s;
+}
+@keyframes qr-magic-spin {
+  to { --qr-magic-angle: 360deg; }
+}
+
+/* hover 时 + 一圈呼吸 glow（与边框流光共生） */
+.qr-magic-glow {
+  position: relative;
+}
+.qr-magic-glow::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  background: radial-gradient(
+    closest-side,
+    rgba(99, 102, 241, 0.28),
+    rgba(99, 102, 241, 0) 70%
+  );
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+  transition: opacity 240ms ease-out;
+}
+.qr-magic-glow:hover::after {
+  opacity: 1;
+  animation: qr-glow-breathe 2.4s ease-in-out infinite;
+}
+@keyframes qr-glow-breathe {
+  0%, 100% { opacity: 0.7; }
+  50%      { opacity: 1; }
+}
+
+/* ── 4. Shimmer（骨架卡片光线扫过）── */
+@keyframes qr-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.qr-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(99, 102, 241, 0.04) 0%,
+    rgba(99, 102, 241, 0.10) 40%,
+    rgba(139, 92, 246, 0.16) 50%,
+    rgba(99, 102, 241, 0.10) 60%,
+    rgba(99, 102, 241, 0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: qr-shimmer 1.6s linear infinite;
+}
+
+/* ── 5. 文案淡入淡出（解析阶段轮播）── */
+@keyframes qr-fade-swap {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.qr-fade-swap {
+  animation: qr-fade-swap 220ms ease-out;
+}
+
+/* ── 6. 卡片入场升级 ── */
 @keyframes qr-card-enter {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.qr-card-enter {
+  animation: qr-card-enter 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* title "显影"——用 mask 让文字从左到右显出，模拟 AI 把字写进去 */
+@keyframes qr-title-reveal {
+  from {
+    -webkit-mask-position: 100% 0;
+            mask-position: 100% 0;
+  }
+  to {
+    -webkit-mask-position: 0 0;
+            mask-position: 0 0;
+  }
+}
+.qr-title-reveal {
+  -webkit-mask-image: linear-gradient(90deg, #000 0 30%, transparent 60%);
+  -webkit-mask-size: 250% 100%;
+  -webkit-mask-position: 100% 0;
+  -webkit-mask-repeat: no-repeat;
+          mask-image: linear-gradient(90deg, #000 0 30%, transparent 60%);
+          mask-size: 250% 100%;
+          mask-position: 100% 0;
+          mask-repeat: no-repeat;
+  animation: qr-title-reveal 320ms cubic-bezier(0.2, 0.8, 0.2, 1) 80ms both;
+}
+
+/* chips 依次入场：每个 chip 容器加 .qr-chip-enter，inline style 控制 delay */
+@keyframes qr-chip-enter {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
-.qr-card-enter {
-  animation: qr-card-enter 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+.qr-chip-enter {
+  animation: qr-chip-enter 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
+/* selected 左侧 accent bar（渐变竖条）—— bar 本身用伪元素，
+   selected 时滑入，未选不显 */
+.qr-accent-bar {
+  position: relative;
+}
+.qr-accent-bar::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(
+    180deg,
+    #6366f1 0%,
+    #8b5cf6 50%,
+    #22d3ee 100%
+  );
+  transform: scaleY(0);
+  transform-origin: top;
+  opacity: 0;
+  transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+              opacity 200ms ease-out;
+}
+.qr-accent-bar.qr-accent-bar--on::before {
+  transform: scaleY(1);
+  opacity: 1;
+}
+
+/* 通用脉冲（标签加载中等小提示）——保持原 qr-pulse 不变 */
 @keyframes qr-pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
+  50%      { opacity: 0.55; }
 }
 .qr-pulse {
   animation: qr-pulse 1.4s ease-in-out infinite;
 }
+
+/* logo 启动脉冲（点解析瞬间触发一次）*/
+@keyframes qr-logo-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+.qr-logo-pop {
+  animation: qr-logo-pop 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ──────────────────────────────────────────────────────────── */
 
 /* ────────────────────────────────────────────────────────────
  * TipTap (RichDescription) 视觉

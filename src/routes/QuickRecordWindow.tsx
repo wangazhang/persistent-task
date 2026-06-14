@@ -251,16 +251,43 @@ export default function QuickRecordWindow() {
   const selectedCount = drafts.filter((d) => d.selected).length;
   const totalCount = drafts.length;
 
+  // 容器 halo class：根据阶段/错误态切换
+  const haloClass =
+    phase === "parsing" || phase === "committing"
+      ? "qr-halo-thinking"
+      : phase === "done"
+      ? "qr-halo-success"
+      : error === ERR_AI_NOT_CONFIGURED
+      ? "qr-halo-error"
+      : "qr-halo-idle";
+
+  // 头部 logo "启动脉冲"——点击解析瞬间触发一次
+  const [logoPulseKey, setLogoPulseKey] = useState(0);
+  useEffect(() => {
+    if (phase === "parsing") setLogoPulseKey((k) => k + 1);
+  }, [phase]);
+
   return (
     <div className="h-screen w-screen p-0 flex items-stretch justify-stretch bg-transparent">
-      <div className="qr-window-enter h-full w-full flex flex-col overflow-hidden rounded-2xl border border-white/40 bg-white/95 backdrop-blur-2xl shadow-[0_24px_60px_-12px_rgba(15,23,42,0.45),0_8px_24px_-8px_rgba(15,23,42,0.25)]">
+      <div
+        className={cn(
+          "qr-window-enter h-full w-full flex flex-col overflow-hidden rounded-2xl border border-white/40 bg-white/95 backdrop-blur-2xl",
+          haloClass
+        )}
+      >
         {/* 头部：拖拽区 + 状态指示 */}
         <header
           className="flex items-center justify-between px-5 pt-4 pb-3 select-none"
           data-tauri-drag-region
         >
           <div className="flex items-center gap-2.5 pointer-events-none">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 shadow-sm">
+            <div
+              key={`logo-${logoPulseKey}`}
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 via-violet-500 to-brand-700 shadow-sm",
+                logoPulseKey > 0 && "qr-logo-pop"
+              )}
+            >
               <Sparkles className="h-3.5 w-3.5 text-white" strokeWidth={2.5} />
             </div>
             <div className="flex flex-col leading-tight">
@@ -271,17 +298,10 @@ export default function QuickRecordWindow() {
                   ? "录入成功"
                   : "AI 快速录入"}
               </span>
-              <span className="text-[11px] text-ink-400">
-                {phase === "confirm"
-                  ? "勾选并编辑后录入"
-                  : phase === "parsing"
-                  ? "正在解析…"
-                  : phase === "committing"
-                  ? "正在录入…"
-                  : phase === "done"
-                  ? `已录入 ${committedCount} 个任务`
-                  : "把想法写下来，AI 会帮你拆成任务"}
-              </span>
+              <ParsingSubtitle
+                phase={phase}
+                committedCount={committedCount}
+              />
             </div>
           </div>
 
@@ -328,15 +348,26 @@ export default function QuickRecordWindow() {
           </>
         ) : (
           <>
-            <div className="flex-1 px-5 py-1 flex flex-col">
+            <div className="flex-1 px-5 py-1 flex flex-col min-h-0">
               <textarea
                 ref={textareaRef}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 disabled={phase === "parsing"}
                 placeholder="比如：明天下午做用户访谈、准备问题清单，紧急；周五前交季度报告初稿……"
-                className="flex-1 w-full resize-none bg-transparent text-[15px] leading-relaxed text-ink-800 placeholder:text-ink-300 outline-none disabled:opacity-60"
+                className={cn(
+                  "w-full resize-none bg-transparent text-[15px] leading-relaxed text-ink-800 placeholder:text-ink-300 outline-none transition-all",
+                  phase === "parsing"
+                    ? "h-[68px] shrink-0 opacity-50"
+                    : "flex-1"
+                )}
               />
+              {/* 解析中：骨架卡片占位，传达"AI 正在生成多张卡片"的预期 */}
+              {phase === "parsing" && (
+                <div className="flex-1 overflow-hidden pt-2">
+                  <SkeletonCards />
+                </div>
+              )}
             </div>
             {error && <ErrorRow error={error} onGotoSettings={handleGotoSettings} />}
             <InputFooter
@@ -355,6 +386,90 @@ export default function QuickRecordWindow() {
 // ──────────────────────────────────────────────────────────────
 // 子组件
 // ──────────────────────────────────────────────────────────────
+
+/** 副标题：解析阶段做文案轮播，传达 "AI 在做什么" 的层次 */
+const PARSING_PHASES = [
+  "理解你的话…",
+  "拆分任务…",
+  "匹配标签…",
+  "整理细节…",
+];
+
+function ParsingSubtitle({
+  phase,
+  committedCount,
+}: {
+  phase: Phase;
+  committedCount: number;
+}) {
+  const [parsingIdx, setParsingIdx] = useState(0);
+  // 进入 parsing 时重置并按 1.2s 节奏轮播；离开时停
+  useEffect(() => {
+    if (phase !== "parsing") {
+      setParsingIdx(0);
+      return;
+    }
+    setParsingIdx(0);
+    const id = setInterval(() => {
+      setParsingIdx((i) => Math.min(i + 1, PARSING_PHASES.length - 1));
+    }, 1200);
+    return () => clearInterval(id);
+  }, [phase]);
+
+  const text =
+    phase === "parsing"
+      ? PARSING_PHASES[parsingIdx]
+      : phase === "confirm"
+      ? "勾选并编辑后录入"
+      : phase === "committing"
+      ? "正在录入…"
+      : phase === "done"
+      ? `已录入 ${committedCount} 个任务`
+      : "把想法写下来，AI 会帮你拆成任务";
+
+  // key 切换时触发 fade-swap 动画
+  return (
+    <span
+      key={`${phase}-${parsingIdx}`}
+      className="qr-fade-swap text-[11px] text-ink-400"
+    >
+      {text}
+    </span>
+  );
+}
+
+/** 解析阶段的骨架卡片：3 张固定占位，shimmer 光线扫过 */
+function SkeletonCards() {
+  return (
+    <div className="space-y-2">
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          className="qr-card-enter rounded-xl border border-ink-200/40 bg-white/40 px-3 py-2.5"
+          style={{ animationDelay: `${i * 60}ms` }}
+        >
+          <div className="flex items-start gap-2.5">
+            <div className="mt-1 h-4 w-4 shrink-0 rounded-md bg-ink-200/60" />
+            <div className="flex-1 space-y-2">
+              {/* title */}
+              <div className="qr-shimmer h-4 w-3/5 rounded-md" />
+              {/* metadata 行 */}
+              <div className="flex items-center gap-1.5">
+                <div className="qr-shimmer h-5 w-16 rounded-md" />
+                <div className="qr-shimmer h-5 w-20 rounded-md" />
+              </div>
+              {/* tags 行 */}
+              <div className="flex items-center gap-1.5">
+                <div className="qr-shimmer h-5 w-14 rounded-full" />
+                <div className="qr-shimmer h-5 w-12 rounded-full" />
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
@@ -538,12 +653,17 @@ function DraftCardRow({
   return (
     <div
       className={cn(
-        "qr-card-enter group relative rounded-xl border bg-white px-3 py-2.5 transition-all",
+        "qr-card-enter qr-accent-bar group relative rounded-xl border bg-white px-3.5 py-2.5 transition-all duration-200",
         d.selected
-          ? "border-ink-200/80 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_2px_8px_-2px_rgba(15,23,42,0.06)]"
-          : "border-ink-200/50 bg-ink-50/50 opacity-55"
+          ? cn(
+              "qr-accent-bar--on border-ink-200/80",
+              "shadow-[0_1px_2px_rgba(15,23,42,0.04),0_2px_8px_-2px_rgba(15,23,42,0.06)]",
+              "hover:-translate-y-px hover:border-ink-300/80",
+              "hover:shadow-[0_2px_8px_-2px_rgba(15,23,42,0.08),0_8px_24px_-8px_rgba(99,102,241,0.10)]"
+            )
+          : "border-ink-200/50 bg-ink-50/50 opacity-55 hover:opacity-80"
       )}
-      style={{ animationDelay: `${Math.min(index * 40, 240)}ms` }}
+      style={{ animationDelay: `${Math.min(index * 60, 360)}ms` }}
     >
       <div className="flex items-start gap-2.5">
         {/* 勾选 —— 自定义样式，跟原生 checkbox 不同 */}
@@ -553,7 +673,7 @@ function DraftCardRow({
           className={cn(
             "mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-md border transition-all",
             d.selected
-              ? "border-brand-600 bg-brand-600 shadow-sm shadow-brand-600/30"
+              ? "border-brand-600 bg-gradient-to-br from-brand-500 to-brand-600 shadow-sm shadow-brand-600/30"
               : "border-ink-300 bg-white hover:border-ink-400"
           )}
           aria-label={d.selected ? "取消勾选" : "勾选"}
@@ -562,7 +682,8 @@ function DraftCardRow({
         </button>
 
         <div className="flex-1 min-w-0 space-y-2">
-          {/* 标题：blur 提交，Enter 提交，Esc 还原 */}
+          {/* 标题：blur 提交，Enter 提交，Esc 还原。
+              入场时用 mask 让文字从左到右"显影"，模拟 AI 写进去。 */}
           <input
             type="text"
             value={titleLocal}
@@ -583,7 +704,7 @@ function DraftCardRow({
               }
             }}
             className={cn(
-              "w-full bg-transparent text-[14px] font-medium text-ink-800 outline-none",
+              "qr-title-reveal w-full bg-transparent text-[14.5px] font-semibold text-ink-900 outline-none",
               "rounded-md border border-transparent px-1.5 -mx-1.5 py-0.5",
               "focus:border-brand-300 focus:bg-brand-50/30",
               "placeholder:text-ink-300"
@@ -591,32 +712,50 @@ function DraftCardRow({
             placeholder="任务标题"
           />
 
-          {/* 优先级 + 日期：横排，空间不够会自动换行 */}
+          {/* 优先级 + 日期：横排，stagger 入场 */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <PriorityPicker
-              priority={d.priority}
-              size="sm"
-              onChange={(next) => onChange("priority", next)}
-            />
-            <DateRangePicker
-              value={d.scheduledDates}
-              onChange={(next) => onChange("scheduledDates", next)}
-            />
+            <div
+              className="qr-chip-enter"
+              style={{ animationDelay: `${Math.min(index * 60 + 120, 420)}ms` }}
+            >
+              <PriorityPicker
+                priority={d.priority}
+                size="sm"
+                onChange={(next) => onChange("priority", next)}
+              />
+            </div>
+            <div
+              className="qr-chip-enter"
+              style={{ animationDelay: `${Math.min(index * 60 + 160, 460)}ms` }}
+            >
+              <DateRangePicker
+                value={d.scheduledDates}
+                onChange={(next) => onChange("scheduledDates", next)}
+              />
+            </div>
           </div>
 
           {/* 已匹配标签 */}
           {tags.length > 0 && (
-            <TagHierarchyPicker
-              mode="multi"
-              value={d.matchedTagIds}
-              onChange={(next) => onChange("matchedTagIds", next)}
-              tagsOverride={tags}
-            />
+            <div
+              className="qr-chip-enter"
+              style={{ animationDelay: `${Math.min(index * 60 + 200, 500)}ms` }}
+            >
+              <TagHierarchyPicker
+                mode="multi"
+                value={d.matchedTagIds}
+                onChange={(next) => onChange("matchedTagIds", next)}
+                tagsOverride={tags}
+              />
+            </div>
           )}
 
           {/* 新建标签建议（amber 的 opt-in 复选框） */}
           {d.newTagNames.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div
+              className="qr-chip-enter flex flex-wrap items-center gap-1.5"
+              style={{ animationDelay: `${Math.min(index * 60 + 240, 540)}ms` }}
+            >
               <span className="text-[10.5px] font-medium uppercase tracking-wider text-ink-400">
                 建议新建
               </span>
@@ -630,7 +769,7 @@ function DraftCardRow({
                     className={cn(
                       "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11.5px] transition-all",
                       checked
-                        ? "border-amber-300 bg-amber-50 text-amber-700"
+                        ? "border-amber-300 bg-amber-50 text-amber-700 shadow-sm shadow-amber-500/10"
                         : "border-ink-200 bg-white text-ink-400 line-through opacity-60 hover:opacity-100"
                     )}
                   >
@@ -681,13 +820,14 @@ function DescriptionField({
   onToggle,
   onChange,
 }: DescriptionFieldProps) {
+  // 折叠态：用统一的小 chip 风格触发展开（无论有/无内容）
   if (!expanded) {
     if (!value) {
       return (
         <button
           type="button"
           onClick={onToggle}
-          className="inline-flex items-center gap-0.5 text-[11px] text-ink-400 hover:text-ink-600 transition-colors"
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-ink-400 hover:bg-ink-100/60 hover:text-ink-600 transition-colors"
         >
           <ChevronDown className="h-3 w-3" />
           添加描述
@@ -695,12 +835,12 @@ function DescriptionField({
       );
     }
     return (
-      <div className="flex items-start gap-1">
-        <p className="flex-1 text-[12.5px] text-ink-500 line-clamp-1">{value}</p>
+      <div className="flex items-start gap-1.5">
+        <p className="flex-1 text-[12.5px] text-ink-400 line-clamp-1">{value}</p>
         <button
           type="button"
           onClick={onToggle}
-          className="shrink-0 inline-flex items-center gap-0.5 text-[11px] text-ink-400 hover:text-ink-600 transition-colors"
+          className="shrink-0 inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[11px] text-ink-400 hover:bg-ink-100/60 hover:text-ink-600 transition-colors"
           aria-label="展开描述"
         >
           <ChevronDown className="h-3 w-3" />
@@ -708,6 +848,7 @@ function DescriptionField({
       </div>
     );
   }
+  // 展开态：textarea 与卡片同色调（背景比卡片浅一档，呼应卡片本体）
   return (
     <div className="space-y-1">
       <textarea
@@ -715,12 +856,12 @@ function DescriptionField({
         onChange={(e) => onChange(e.target.value)}
         rows={3}
         placeholder="补充描述…"
-        className="w-full resize-y rounded-md border border-ink-200 bg-white px-2 py-1.5 text-[12.5px] text-ink-700 outline-none focus:border-brand-300"
+        className="w-full resize-y rounded-md border border-ink-200/70 bg-ink-50/50 px-2 py-1.5 text-[12.5px] text-ink-700 outline-none transition-colors focus:border-brand-300 focus:bg-white"
       />
       <button
         type="button"
         onClick={onToggle}
-        className="inline-flex items-center gap-0.5 text-[11px] text-ink-400 hover:text-ink-600 transition-colors"
+        className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[11px] text-ink-400 hover:bg-ink-100/60 hover:text-ink-600 transition-colors"
         aria-label="收起描述"
       >
         <ChevronUp className="h-3 w-3" />

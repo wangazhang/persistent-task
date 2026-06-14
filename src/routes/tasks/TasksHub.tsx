@@ -143,16 +143,17 @@ export function TasksHub() {
               ⌘K
             </kbd>
           </button>
-          {/* 快速录入：仅桌面端，Cmd/Ctrl + Shift + I 也能触发 */}
+          {/* 快速录入：仅桌面端，Cmd/Ctrl + Shift + I 也能触发。
+              视觉：流光边框（永久）+ hover 呼吸 glow，传达"AI 入口"语义。 */}
           {isTauri() && (
             <button
               type="button"
               onClick={() => void openQuickRecordWindow()}
-              className="flex items-center gap-2 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs text-ink-600 transition-colors hover:border-ink-300 hover:text-ink-800"
+              className="qr-magic-border qr-magic-glow group relative flex items-center gap-2 rounded-lg border border-transparent bg-white px-3 py-1.5 text-xs text-ink-700 transition-colors hover:text-ink-900"
               title="快速录入（Cmd/Ctrl + Shift + I）"
               aria-label="AI 快速录入"
             >
-              <Sparkles className="h-3.5 w-3.5" />
+              <Sparkles className="h-3.5 w-3.5 text-brand-600 transition-transform group-hover:scale-110" />
               <span className="hidden sm:inline">快速录入</span>
             </button>
           )}
