@@ -102,6 +102,7 @@ pub fn run() {
             commands::ai::get_ai_settings,
             commands::ai::set_ai_settings,
             tray::open_task_editor,
+            tray::open_quick_record,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");

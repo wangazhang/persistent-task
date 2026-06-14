@@ -22,6 +22,10 @@ const POPUP_H: f64 = 520.0;
 const EDITOR_LABEL: &str = "task-editor";
 const EDITOR_W: f64 = 720.0;
 const EDITOR_H: f64 = 760.0;
+const QUICK_RECORD_LABEL: &str = "quick-record";
+// 比 task-editor 小：Spotlight 风格输入框，确认态会随卡片数量自适应（前端控制实际高度）
+const QUICK_RECORD_W: f64 = 560.0;
+const QUICK_RECORD_H: f64 = 440.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PopupMonitor {
@@ -195,6 +199,82 @@ pub fn open_task_editor<R: Runtime>(
         let _ = window.set_position(pos);
     }
     Ok(())
+}
+
+/// 前端 invoke：打开 / 切换 AI 快速录入小窗。
+///
+/// 与 `open_task_editor` 同结构（modeless child，居中、跟随主窗口），尺寸更小：
+/// Spotlight 风格的输入条 + 确认卡片，560×440。已存在则复用 + 重新居中 + show + focus。
+#[tauri::command]
+pub fn open_quick_record<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    if let Some(main) = app.get_webview_window("main") {
+        if main.is_minimized().unwrap_or(false) {
+            let _ = main.unminimize();
+        }
+        let _ = main.show();
+        let _ = main.set_focus();
+    }
+
+    if let Some(w) = app.get_webview_window(QUICK_RECORD_LABEL) {
+        if let Some(pos) = compute_quick_record_center(&app) {
+            let _ = w.set_position(pos);
+        }
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+
+    let mut builder = WebviewWindowBuilder::new(
+        &app,
+        QUICK_RECORD_LABEL,
+        WebviewUrl::App("index.html?win=quick-record".into()),
+    )
+    .title("快速录入")
+    .inner_size(QUICK_RECORD_W, QUICK_RECORD_H)
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .resizable(false)
+    .skip_taskbar(true)
+    .visible(true)
+    .focused(true);
+
+    let manual_pos = compute_quick_record_center(&app);
+    if manual_pos.is_none() {
+        builder = builder.center();
+    }
+
+    if let Some(main) = app.get_webview_window("main") {
+        builder = builder.parent(&main).map_err(|e| e.to_string())?;
+    }
+
+    let window = builder.build().map_err(|e| e.to_string())?;
+    let _ = window.set_size(LogicalSize::new(QUICK_RECORD_W, QUICK_RECORD_H));
+    if let Some(pos) = manual_pos {
+        let _ = window.set_position(pos);
+    }
+    Ok(())
+}
+
+/// quick-record 窗口的居中位置（与 `compute_editor_center` 同算法，仅尺寸不同）
+fn compute_quick_record_center<R: Runtime>(app: &AppHandle<R>) -> Option<PhysicalPosition<i32>> {
+    let main = app.get_webview_window("main")?;
+    let pos = main.outer_position().ok()?;
+    let size = main.outer_size().ok()?;
+    let scale = main
+        .current_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.scale_factor())
+        .unwrap_or(1.0);
+    let popup_w_px = (QUICK_RECORD_W * scale) as i32;
+    let popup_h_px = (QUICK_RECORD_H * scale) as i32;
+    let cx = pos.x + (size.width as i32) / 2;
+    let cy = pos.y + (size.height as i32) / 2;
+    Some(PhysicalPosition::new(
+        cx - popup_w_px / 2,
+        cy - popup_h_px / 2,
+    ))
 }
 
 /// 计算弹窗居中位置（物理坐标）：以主窗口几何中心为基准，减去

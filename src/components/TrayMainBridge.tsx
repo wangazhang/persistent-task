@@ -28,6 +28,13 @@ import {
   type TaskEditorAction,
   type TaskEditorTarget,
 } from "@/lib/taskEditorBridge";
+import {
+  emitQuickRecordCommitted,
+  listenQuickRecordCommit,
+  type QuickRecordCommitPayload,
+} from "@/lib/quickRecordBridge";
+import { planCommit } from "@/lib/quickRecordCommit";
+import { uid } from "@/lib/utils";
 import type { TrayStateSnapshot } from "@/store/trayStore";
 import { isTauri } from "@/lib/dataAdapter";
 import { isoDate } from "@/lib/utils";
@@ -158,6 +165,24 @@ export function TrayMainBridge() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // AI 快速录入：监听小窗 commit → 在 main 侧落库 → 回发 committed
+  useEffect(() => {
+    if (!isTauri()) return;
+    let un: (() => void) | undefined;
+    let disposed = false;
+    listenQuickRecordCommit((payload) => {
+      void handleQuickRecordCommit(payload);
+    }).then((u) => {
+      if (disposed) u();
+      else un = u;
+    });
+    return () => {
+      disposed = true;
+      un?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function handleAction(action: TrayAction) {
     const pomoStore = usePomodoroStore.getState();
     const taskStore = useTaskStore.getState();
@@ -251,6 +276,37 @@ export function TrayMainBridge() {
       return;
     }
     taskStore.updateTask(action.taskId, patch);
+  }
+
+  async function handleQuickRecordCommit(payload: QuickRecordCommitPayload) {
+    const taskStore = useTaskStore.getState();
+    const tagStore = useTagStore.getState();
+    const plan = planCommit(
+      payload.drafts,
+      tagStore.tags,
+      () => uid("tag-")
+    );
+
+    // 1) 先建标签：用 planCommit 给的 id（保证 task.tagIds 已经引用到正确 id）
+    for (const t of plan.newTags) {
+      tagStore.addTag({ id: t.id, name: t.name });
+    }
+
+    // 2) 再建任务：addTask 内部会拿 .id 字段（uid 兜底）
+    for (const task of plan.tasks) {
+      taskStore.addTask({
+        title: task.title,
+        description: task.description,
+        priority: task.priority,
+        scheduledDates: task.scheduledDates,
+        tagIds: task.tagIds,
+      });
+    }
+
+    await emitQuickRecordCommitted({
+      count: plan.tasks.length,
+      newTagCount: plan.newTags.length,
+    });
   }
 }
 

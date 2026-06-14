@@ -80,7 +80,9 @@ export const useTagStore = create<TagStoreState>()(
 
   addTag(partial) {
     const tag: Tag = {
-      id: uid("tag-"),
+      // 允许调用方预生成 id（AI 快速录入需要先编排"标签 id ↔ 任务 tagIds"再批量入库），
+      // 与 addTask 行为一致；未传时回退 uid 生成。
+      id: partial.id ?? uid("tag-"),
       name: partial.name,
       parentId: partial.parentId ?? null,
       color: partial.color ?? "#6366f1",
