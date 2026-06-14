@@ -42,3 +42,6 @@ vite.config.d.ts
 *.db-journal
 *.sqlite
 *.sqlite-journal
+
+# Claude Code per-machine settings (plugin toggles, etc.)
+.claude/

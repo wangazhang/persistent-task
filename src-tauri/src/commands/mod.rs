@@ -4,6 +4,7 @@
 // 同时把 anyhow::Error 统一映射成 String（Tauri 命令对错误类型的要求）。
 // 业务逻辑全部在 `core` 模块，MCP server 也复用同一份实现。
 
+pub mod ai;
 pub mod core;
 pub mod mcp_ctl;
 

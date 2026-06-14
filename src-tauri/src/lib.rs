@@ -97,6 +97,10 @@ pub fn run() {
             commands::mcp_ctl::get_mcp_status,
             commands::mcp_ctl::start_mcp_server,
             commands::mcp_ctl::stop_mcp_server,
+            // AI 快速录入
+            commands::ai::parse_quick_input,
+            commands::ai::get_ai_settings,
+            commands::ai::set_ai_settings,
             tray::open_task_editor,
         ])
         .run(tauri::generate_context!())

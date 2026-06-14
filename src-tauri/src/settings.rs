@@ -22,6 +22,19 @@ pub const KEY_ALLOW_DESTRUCTIVE: &str = "mcp.allow_destructive";
 
 pub const DEFAULT_PORT: u16 = 7321;
 
+// ── AI 快速录入 ──
+//   ai.anthropic_api_key  string — Anthropic API Key（明文存本地 SQLite；为空时回退环境变量）
+//   ai.model              string — 模型 id（默认 claude-sonnet-4-6，抽取类任务足够且更快更省）
+//   ai.base_url           string — 可选，自建网关 / 代理地址（默认官方）
+pub const KEY_AI_API_KEY: &str = "ai.anthropic_api_key";
+pub const KEY_AI_MODEL: &str = "ai.model";
+pub const KEY_AI_BASE_URL: &str = "ai.base_url";
+
+pub const DEFAULT_AI_MODEL: &str = "claude-sonnet-4-6";
+pub const DEFAULT_AI_BASE_URL: &str = "https://api.anthropic.com";
+/// API Key 为空时的环境变量兜底（仅 key 走兜底；model/base_url 用默认）
+pub const ENV_AI_API_KEY: &str = "ANTHROPIC_API_KEY";
+
 pub fn get_raw(state: &AppState, key: &str) -> Result<Option<String>> {
     let conn = state.conn.lock();
     let val: Option<String> = conn
@@ -96,4 +109,96 @@ pub fn read_mcp_settings(state: &AppState) -> Result<McpSettings> {
         allow_write: get_bool(state, KEY_ALLOW_WRITE, false)?,
         allow_destructive: get_bool(state, KEY_ALLOW_DESTRUCTIVE, false)?,
     })
+}
+
+/// AI 快速录入配置快照。`api_key` 已掺入环境变量兜底（前端展示前应做掩码）。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiSettings {
+    /// 生效的 API Key（settings 表为空时回退环境变量）。可能为空串=未配置。
+    pub api_key: String,
+    pub model: String,
+    pub base_url: String,
+}
+
+impl AiSettings {
+    /// 是否已配置可用的 Key
+    pub fn has_key(&self) -> bool {
+        !self.api_key.trim().is_empty()
+    }
+}
+
+/// 解析生效 API Key：settings 表值优先，为空时回退环境变量；空白串视作未设置。
+///
+/// 抽成纯函数便于单测（不触碰全局 env），调用方传入两个来源。
+pub fn resolve_api_key(table: Option<String>, env: Option<String>) -> String {
+    let pick = |v: Option<String>| v.filter(|s| !s.trim().is_empty());
+    pick(table).or_else(|| pick(env)).unwrap_or_default()
+}
+
+/// 读取 AI 配置。Key 走 settings 表 → 环境变量兜底；model/base_url 缺省用默认值。
+pub fn read_ai_settings(state: &AppState) -> Result<AiSettings> {
+    let table_key = get_raw(state, KEY_AI_API_KEY)?;
+    let env_key = std::env::var(ENV_AI_API_KEY).ok();
+    let model = get_raw(state, KEY_AI_MODEL)?
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_AI_MODEL.to_string());
+    let base_url = get_raw(state, KEY_AI_BASE_URL)?
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_AI_BASE_URL.to_string());
+    Ok(AiSettings {
+        api_key: resolve_api_key(table_key, env_key),
+        model,
+        base_url,
+    })
+}
+
+/// 写入 AI 配置。
+/// - `api_key` 为 `None` 表示保持现有 Key 不动；`Some("")`/空白 表示清空（回退默认/环境变量）。
+/// - `model` / `base_url` 空串表示清空该项（让其回退默认值）。
+pub fn write_ai_settings(
+    state: &AppState,
+    api_key: Option<&str>,
+    model: &str,
+    base_url: &str,
+) -> Result<()> {
+    let upsert_or_clear = |key: &str, value: &str| -> Result<()> {
+        if value.trim().is_empty() {
+            delete(state, key)
+        } else {
+            set_raw(state, key, value)
+        }
+    };
+    if let Some(k) = api_key {
+        upsert_or_clear(KEY_AI_API_KEY, k)?;
+    }
+    upsert_or_clear(KEY_AI_MODEL, model)?;
+    upsert_or_clear(KEY_AI_BASE_URL, base_url)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn api_key_prefers_table_then_env() {
+        // 表里有值：直接用表
+        assert_eq!(
+            resolve_api_key(Some("sk-table".into()), Some("sk-env".into())),
+            "sk-table"
+        );
+        // 表为空：回退环境变量
+        assert_eq!(
+            resolve_api_key(None, Some("sk-env".into())),
+            "sk-env"
+        );
+        // 表是空白串：视作未设置，回退环境变量
+        assert_eq!(
+            resolve_api_key(Some("   ".into()), Some("sk-env".into())),
+            "sk-env"
+        );
+        // 都没有：空串
+        assert_eq!(resolve_api_key(None, None), "");
+    }
 }

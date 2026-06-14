@@ -41,3 +41,7 @@ axum = "0.7"
 schemars = "1"
 dirs = "5"
 base64 = "0.22"
+
+# AI 快速录入：直调 Anthropic Messages API（Key 不出前端，避开浏览器 CORS）
+# rustls-tls 避免对系统 OpenSSL 的依赖；只要 json 解析能力。
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
