@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Sparkles } from "lucide-react";
 import { SearchModal } from "@/components/search/SearchModal";
 import { TaskEditor } from "@/components/task/TaskEditor";
 import type { Task } from "@/lib/types";
 import { openTaskEditorWindow } from "@/lib/taskEditorBridge";
+import { openQuickRecordWindow } from "@/lib/quickRecordBridge";
 import { isTauri } from "@/lib/dataAdapter";
 import { cn } from "@/lib/utils";
 import { TaskFilters } from "./TaskFilters";
@@ -64,7 +65,8 @@ export function TasksHub() {
     void openTaskEditorWindow({ taskId: t.id });
   }
 
-  // 全局快捷键：Cmd-K / Ctrl-K 打开搜索；Cmd-N / Ctrl-N 新建任务。
+  // 全局快捷键：Cmd-K / Ctrl-K 打开搜索；Cmd-N / Ctrl-N 新建任务；
+  // Cmd-Shift-I / Ctrl-Shift-I 唤起 AI 快速录入（仅桌面端）。
   // 监听到 input/textarea 内不触发，避免覆盖用户正常输入。
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -80,6 +82,11 @@ export function TasksHub() {
       if (e.key.toLowerCase() === "k") {
         e.preventDefault();
         setSearchOpen((v) => !v);
+      } else if (e.shiftKey && e.key.toLowerCase() === "i") {
+        // 快速录入：仅桌面端可用，Web 模式早 return
+        if (!isTauri()) return;
+        e.preventDefault();
+        void openQuickRecordWindow();
       } else if (!isEditable && e.key.toLowerCase() === "n") {
         e.preventDefault();
         openCreate(date);
@@ -136,6 +143,19 @@ export function TasksHub() {
               ⌘K
             </kbd>
           </button>
+          {/* 快速录入：仅桌面端，Cmd/Ctrl + Shift + I 也能触发 */}
+          {isTauri() && (
+            <button
+              type="button"
+              onClick={() => void openQuickRecordWindow()}
+              className="flex items-center gap-2 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs text-ink-600 transition-colors hover:border-ink-300 hover:text-ink-800"
+              title="快速录入（Cmd/Ctrl + Shift + I）"
+              aria-label="AI 快速录入"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">快速录入</span>
+            </button>
+          )}
           {/* today view 已有专属快速添加；其他 view 才显示「新建任务」 */}
           {view !== "today" && (
             <button

@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Server, Copy, Check, AlertTriangle } from "lucide-react";
+import { Server, Copy, Check, AlertTriangle, Sparkles } from "lucide-react";
+import { isTauri } from "../lib/dataAdapter";
+import {
+  getAiSettings,
+  setAiSettings,
+  type AiSettings,
+} from "../lib/aiParse";
+
+const AI_DEFAULT_MODEL = "claude-sonnet-4-6";
+const AI_DEFAULT_BASE_URL = "https://api.anthropic.com";
 
 type McpSettings = {
   httpEnabled: boolean;
@@ -68,6 +77,16 @@ export function AdvancedPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // AI 录入设置：表单受控字段，与远端 AiSettings 分离
+  const [aiSettings, setAiSettingsState] = useState<AiSettings | null>(null);
+  const [aiKeyInput, setAiKeyInput] = useState("");
+  const [aiKeyDirty, setAiKeyDirty] = useState(false);
+  const [aiModelInput, setAiModelInput] = useState("");
+  const [aiBaseUrlInput, setAiBaseUrlInput] = useState("");
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiSaved, setAiSaved] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     try {
       const [s, st] = await Promise.all([loadSettings(), loadStatus()]);
@@ -82,6 +101,45 @@ export function AdvancedPage() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // 拉取 AI 录入设置（仅 Tauri 环境）
+  const refreshAi = useCallback(async () => {
+    if (!isTauri()) return;
+    try {
+      const s = await getAiSettings();
+      if (!s) return;
+      setAiSettingsState(s);
+      setAiModelInput(s.model);
+      setAiBaseUrlInput(s.baseUrl);
+      setAiError(null);
+    } catch (e) {
+      setAiError(String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshAi();
+  }, [refreshAi]);
+
+  const saveAiSettings = async () => {
+    setAiSaving(true);
+    setAiError(null);
+    try {
+      // apiKey 三态语义：未动过=undefined（保持），输入了内容=该值，留空但 dirty=""（清空回退环境变量）
+      const apiKey = aiKeyDirty ? aiKeyInput : undefined;
+      await setAiSettings(apiKey, aiModelInput, aiBaseUrlInput);
+      // 写完重新拉一次：服务端会回传新的 hasKey + 兜底后的 model/baseUrl
+      await refreshAi();
+      setAiKeyInput("");
+      setAiKeyDirty(false);
+      setAiSaved(true);
+      setTimeout(() => setAiSaved(false), 1500);
+    } catch (e) {
+      setAiError(String(e));
+    } finally {
+      setAiSaving(false);
+    }
+  };
 
   // 服务器开关
   const toggleServer = async (next: boolean) => {
@@ -317,6 +375,120 @@ export function AdvancedPage() {
           </div>
         </div>
       </section>
+
+      {/* AI 录入 —— 仅 Tauri 环境显示 */}
+      {isTauri() && (
+        <section className="rounded-xl border border-ink-200 bg-white p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-brand-600" />
+            <h2 className="text-base font-semibold text-ink-800">AI 录入</h2>
+            <span
+              className={`ml-auto rounded-full px-2 py-0.5 text-xs ${
+                aiSettings?.hasKey
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "bg-ink-100 text-ink-500"
+              }`}
+            >
+              {aiSettings?.hasKey ? "已配置" : "未配置"}
+            </span>
+          </div>
+
+          <p className="mb-4 text-sm text-ink-500 leading-relaxed">
+            配置 Anthropic API Key 以启用「快速录入」中的自由文本 → 任务草稿解析。
+            未配置时，快速录入仍可用结构化方式工作。
+          </p>
+
+          <div className="space-y-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-ink-600">
+                API Key
+              </label>
+              <input
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                value={aiKeyInput}
+                placeholder={
+                  aiSettings?.hasKey
+                    ? "已配置（输入新值覆盖）"
+                    : "sk-ant-..."
+                }
+                onChange={(e) => {
+                  setAiKeyInput(e.target.value);
+                  setAiKeyDirty(true);
+                }}
+                disabled={aiSaving}
+                className="rounded-md border border-ink-200 px-2 py-1 text-sm"
+              />
+              {aiKeyDirty && aiKeyInput === "" && (
+                <span className="text-[11px] text-ink-400">
+                  保存后将清空已存的 Key（回退环境变量）
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-ink-600">模型</label>
+              <input
+                type="text"
+                value={aiModelInput}
+                placeholder={AI_DEFAULT_MODEL}
+                onChange={(e) => setAiModelInput(e.target.value)}
+                disabled={aiSaving}
+                className="rounded-md border border-ink-200 px-2 py-1 text-sm"
+              />
+              <span className="text-[11px] text-ink-400">
+                留空则使用默认 {AI_DEFAULT_MODEL}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-ink-600">
+                Base URL（可选）
+              </label>
+              <input
+                type="text"
+                value={aiBaseUrlInput}
+                placeholder={AI_DEFAULT_BASE_URL}
+                onChange={(e) => setAiBaseUrlInput(e.target.value)}
+                disabled={aiSaving}
+                className="rounded-md border border-ink-200 px-2 py-1 text-sm"
+              />
+              <span className="text-[11px] text-ink-400">
+                留空则使用官方 {AI_DEFAULT_BASE_URL}
+              </span>
+            </div>
+          </div>
+
+          {aiError && (
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <AlertTriangle className="mr-1 inline h-3 w-3" />
+              {aiError}
+            </div>
+          )}
+
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={saveAiSettings}
+              disabled={aiSaving}
+              className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+            >
+              {aiSaved ? (
+                <>
+                  <Check className="h-3.5 w-3.5" /> 已保存
+                </>
+              ) : (
+                "保存"
+              )}
+            </button>
+          </div>
+
+          <p className="mt-4 text-[11px] text-ink-400 leading-relaxed">
+            Key 以明文存本地 SQLite，不上传，不出 Rust 进程之外的网络（仅 Rust → Anthropic）。
+          </p>
+        </section>
+      )}
     </div>
   );
 }
