@@ -28,7 +28,6 @@ import {
   Check,
   Loader2,
   ArrowLeft,
-  CornerDownLeft,
 } from "lucide-react";
 import { useTagStore } from "@/store/tagStore";
 import { isoDate, cn } from "@/lib/utils";
@@ -267,12 +266,16 @@ export default function QuickRecordWindow() {
     if (phase === "parsing") setLogoPulseKey((k) => k + 1);
   }, [phase]);
 
+  // 流光只在解析/录入时旋转——确认态用户专注编辑，不打扰
+  const flowOn = phase === "parsing" || phase === "committing";
+
   return (
-    <div className="h-screen w-screen p-0 flex items-stretch justify-stretch bg-transparent">
+    <div className="h-screen w-screen p-6 bg-transparent">
       <div
         className={cn(
-          "qr-window-enter h-full w-full flex flex-col overflow-hidden rounded-2xl border border-white/40 bg-white/95 backdrop-blur-2xl",
-          haloClass
+          "qr-window-enter qr-panel-flow h-full w-full flex flex-col overflow-hidden rounded-2xl border border-white/50 bg-white/95 backdrop-blur-2xl",
+          haloClass,
+          flowOn && "qr-panel-flow--on"
         )}
       >
         {/* 头部：拖拽区 + 状态指示 */}
@@ -586,14 +589,23 @@ function ConfirmFooter({
 }) {
   return (
     <footer className="flex items-center justify-between px-5 pb-4 pt-3 border-t border-ink-100/80">
-      <span className="text-[11px] text-ink-400">
-        已勾选 {selectedCount} / {totalCount}
+      {/* 快捷键提示放在左侧辅助位，跟主按钮解耦——不再塞进紫色按钮里成灰斑 */}
+      <span className="flex items-center gap-1.5 text-[11px] text-ink-400">
+        <span>已勾选 {selectedCount} / {totalCount}</span>
+        {selectedCount > 0 && !committing && (
+          <span className="flex items-center gap-1 text-ink-300">
+            <span>·</span>
+            <Kbd>⌘</Kbd>
+            <Kbd>↩</Kbd>
+            <span>录入</span>
+          </span>
+        )}
       </span>
       <button
         disabled={selectedCount === 0 || committing}
         onClick={onCommit}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-medium text-white transition-all",
+          "inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium text-white transition-all",
           "bg-gradient-to-b from-brand-500 to-brand-600 shadow-sm shadow-brand-600/20",
           "hover:from-brand-500 hover:to-brand-700 hover:shadow-md hover:shadow-brand-600/30",
           "active:scale-[0.98]",
@@ -606,11 +618,7 @@ function ConfirmFooter({
             录入中
           </>
         ) : (
-          <>
-            录入 {selectedCount > 0 ? selectedCount : ""} 个任务
-            <Kbd>⌘</Kbd>
-            <CornerDownLeft className="h-3 w-3 text-ink-300" />
-          </>
+          <>录入 {selectedCount > 0 ? selectedCount : ""} 个任务</>
         )}
       </button>
     </footer>

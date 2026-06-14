@@ -23,10 +23,11 @@ const EDITOR_LABEL: &str = "task-editor";
 const EDITOR_W: f64 = 720.0;
 const EDITOR_H: f64 = 760.0;
 const QUICK_RECORD_LABEL: &str = "quick-record";
-// Spotlight 风格：宽屏入口，输入态 ≈ 输入框 + 短 footer，确认态需要装下若干卡片
-// 高度按"够展示 3-4 张卡片但不喧宾夺主"取 560；前端窗口体已自适应内容
-const QUICK_RECORD_W: f64 = 640.0;
-const QUICK_RECORD_H: f64 = 560.0;
+// Spotlight 风格：窗口比"面板内容"大一圈（前端根容器 p-6 = 24px 透明内边距），
+// 留出空间给多色 halo 光圈渲染——否则光圈溢出窗口矩形被 OS 裁掉（不可见的根因）。
+// 面板内容 ≈ 640×560，+48 边距 → 窗口 700×620（多 4px 给光圈呼吸）。
+const QUICK_RECORD_W: f64 = 700.0;
+const QUICK_RECORD_H: f64 = 620.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PopupMonitor {

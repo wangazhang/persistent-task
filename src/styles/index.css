@@ -136,15 +136,18 @@
  *   .qr-halo-success 完成态（success 染色，逐渐淡出）
  *
  * 颜色取自项目 brand-500 #6366f1、violet-500 #8b5cf6、cyan-400 #22d3ee
- * 饱和度统一压在 28% 以下，避免赛博朋克炫光。
+ * 饱和度统一压在 ~30% 以下，避免赛博朋克炫光。
+ *
+ * 半径收紧到 ≤44px，配合根容器 p-6 透明内边距才能完整显示——
+ * 否则面板铺满窗口时光圈溢出被 OS 窗口矩形裁掉（之前不可见的根因）。
  */
 .qr-halo-idle {
   box-shadow:
-    0 0 0 1px rgba(99, 102, 241, 0.18),
-    0 0 24px 0 rgba(99, 102, 241, 0.18),
-    0 12px 40px -8px rgba(99, 102, 241, 0.22),
-    0 24px 80px -12px rgba(139, 92, 246, 0.18),
-    0 32px 120px -16px rgba(34, 211, 238, 0.10);
+    0 0 0 1px rgba(99, 102, 241, 0.22),
+    0 2px 12px -2px rgba(15, 23, 42, 0.12),
+    0 6px 24px -6px rgba(99, 102, 241, 0.32),
+    0 0 30px -2px rgba(139, 92, 246, 0.24),
+    0 0 44px 2px rgba(34, 211, 238, 0.14);
 }
 .qr-halo-thinking {
   animation: qr-halo-breathe 2.4s ease-in-out infinite;
@@ -152,40 +155,79 @@
 @keyframes qr-halo-breathe {
   0%, 100% {
     box-shadow:
-      0 0 0 1px rgba(99, 102, 241, 0.28),
-      0 0 32px 0 rgba(99, 102, 241, 0.26),
-      0 12px 48px -8px rgba(99, 102, 241, 0.30),
-      0 24px 96px -12px rgba(139, 92, 246, 0.24),
-      0 32px 140px -16px rgba(34, 211, 238, 0.14);
+      0 0 0 1px rgba(99, 102, 241, 0.30),
+      0 4px 16px -2px rgba(15, 23, 42, 0.12),
+      0 8px 28px -6px rgba(99, 102, 241, 0.38),
+      0 0 36px -2px rgba(139, 92, 246, 0.30),
+      0 0 52px 2px rgba(34, 211, 238, 0.18);
   }
   50% {
     box-shadow:
-      0 0 0 1px rgba(99, 102, 241, 0.40),
-      0 0 56px 0 rgba(99, 102, 241, 0.40),
-      0 16px 72px -8px rgba(99, 102, 241, 0.42),
-      0 32px 140px -12px rgba(139, 92, 246, 0.34),
-      0 40px 180px -16px rgba(34, 211, 238, 0.20);
+      0 0 0 1px rgba(99, 102, 241, 0.45),
+      0 6px 22px -2px rgba(15, 23, 42, 0.14),
+      0 10px 36px -6px rgba(99, 102, 241, 0.50),
+      0 0 48px -2px rgba(139, 92, 246, 0.40),
+      0 0 64px 4px rgba(34, 211, 238, 0.24);
   }
 }
 .qr-halo-error {
   box-shadow:
-    0 0 0 1px rgba(244, 63, 94, 0.28),
-    0 0 28px 0 rgba(244, 63, 94, 0.24),
-    0 12px 40px -8px rgba(244, 63, 94, 0.28),
-    0 24px 80px -12px rgba(244, 63, 94, 0.16);
+    0 0 0 1px rgba(244, 63, 94, 0.30),
+    0 4px 16px -2px rgba(15, 23, 42, 0.12),
+    0 8px 28px -6px rgba(244, 63, 94, 0.34),
+    0 0 36px -2px rgba(244, 63, 94, 0.20);
 }
 .qr-halo-success {
   box-shadow:
-    0 0 0 1px rgba(16, 185, 129, 0.30),
-    0 0 32px 0 rgba(16, 185, 129, 0.30),
-    0 12px 48px -8px rgba(16, 185, 129, 0.32),
-    0 24px 80px -12px rgba(16, 185, 129, 0.18);
+    0 0 0 1px rgba(16, 185, 129, 0.32),
+    0 4px 16px -2px rgba(15, 23, 42, 0.12),
+    0 8px 28px -6px rgba(16, 185, 129, 0.36),
+    0 0 40px -2px rgba(16, 185, 129, 0.22);
   transition: box-shadow 600ms ease-out;
 }
 
 .qr-halo-idle,
 .qr-halo-error {
   transition: box-shadow 360ms ease-out;
+}
+
+/* ── 2b. 弹窗流光边框（仅解析时旋转）──
+ *
+ * 与入口按钮的 .qr-magic-border 同技术（conic-gradient + 双 mask 抠边），
+ * 但默认 opacity:0 不显；加 .qr-panel-flow--on 才显现并旋转。
+ * 这样确认态用户专注编辑时流光停下（不打扰），解析中才强调"AI 在工作"。
+ */
+.qr-panel-flow {
+  position: relative;
+  isolation: isolate;
+}
+.qr-panel-flow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--qr-magic-angle),
+    rgba(99, 102, 241, 0)        0deg,
+    rgba(99, 102, 241, 0.90)    55deg,
+    rgba(139, 92, 246, 1)      100deg,
+    rgba(34, 211, 238, 0.90)   145deg,
+    rgba(99, 102, 241, 0)      230deg,
+    rgba(99, 102, 241, 0)      360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 320ms ease-out;
+}
+.qr-panel-flow--on::before {
+  opacity: 1;
+  animation: qr-magic-spin 2.6s linear infinite;
 }
 
 /* ── 3. 流光边框（入口按钮 + 输入按钮通用）──
