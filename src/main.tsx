@@ -31,6 +31,11 @@ if (winParam === "tray-popup") {
 } else if (winParam === "task-editor") {
   mount(<TaskEditorWindow />);
 } else if (winParam === "quick-record") {
+  // 这个 webview 是透明窗口 + 面板四周留透明 padding（给光圈/圆角）。
+  // 全局 body 有 bg-ink-50（浅灰），会把 padding 区填成直角浅色块——
+  // 覆盖掉，让 padding 真正透明，只剩圆角面板 + 光圈。
+  document.documentElement.style.background = "transparent";
+  document.body.style.background = "transparent";
   mount(<QuickRecordWindow />);
 } else {
   initAdapter().then(async () => {
