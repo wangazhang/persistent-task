@@ -355,7 +355,7 @@ pub async fn parse_quick_input(
                 },
             });
             let resp = client
-                .post(format!("{base}/responses"))
+                .post(openai_endpoint(&ai.base_url, "responses"))
                 .header("authorization", format!("Bearer {}", ai.api_key))
                 .header("content-type", "application/json")
                 .json(&body)
@@ -370,15 +370,30 @@ pub async fn parse_quick_input(
     Ok(parse_emit_tasks_input(&tasks_value, &allowed))
 }
 
-/// 读响应：非 2xx 抛带摘要的错误，2xx 解析为 JSON。
+/// OpenAI 端点 URL 归一化：无论 base 带不带 `/v1`，最终都拼成 `{host}/v1/{path}`。
+///   https://api.openai.com/v1   + responses → https://api.openai.com/v1/responses
+///   https://gw.example.com      + models    → https://gw.example.com/v1/models
+///   https://gw.example.com/v1   + models    → https://gw.example.com/v1/models
+pub fn openai_endpoint(base: &str, path: &str) -> String {
+    let trimmed = base.trim().trim_end_matches('/');
+    let root = trimmed.strip_suffix("/v1").unwrap_or(trimmed);
+    format!("{root}/v1/{path}")
+}
+
+/// 读响应：把 HTTP 状态 + URL + 响应片段带进错误，便于诊断网关问题。
+/// 非 2xx 或非 JSON（如网关返回 HTML/404 页）都给出可读信息，而不是裸 serde 错误。
 async fn read_json_or_err(resp: reqwest::Response, who: &str) -> Result<Value, String> {
     let status = resp.status();
+    let url = resp.url().to_string();
     let payload = resp.text().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
-        let snippet: String = payload.chars().take(500).collect();
-        return Err(format!("{who} 返回 {status}：{snippet}"));
+        let snippet: String = payload.chars().take(400).collect();
+        return Err(format!("{who} 返回 {status}（{url}）：{snippet}"));
     }
-    serde_json::from_str(&payload).map_err(|e| format!("解析响应 JSON 失败：{e}"))
+    serde_json::from_str(&payload).map_err(|_| {
+        let snippet: String = payload.chars().take(200).collect();
+        format!("{who} 返回非 JSON 响应（{url}，HTTP {status}）：{snippet}")
+    })
 }
 
 /// 读取 AI 配置完整视图（两 provider 都带，不回传明文 Key）。
@@ -424,14 +439,13 @@ pub async fn list_ai_models(
         return Err(ERR_AI_NOT_CONFIGURED.to_string());
     }
     let client = reqwest::Client::new();
-    let base = ai.base_url.trim_end_matches('/');
     let req = match ai.provider {
         settings::AiProvider::Anthropic => client
-            .get(format!("{base}/v1/models"))
+            .get(format!("{}/v1/models", ai.base_url.trim_end_matches('/')))
             .header("x-api-key", &ai.api_key)
             .header("anthropic-version", ANTHROPIC_VERSION),
         settings::AiProvider::Openai => client
-            .get(format!("{base}/models"))
+            .get(openai_endpoint(&ai.base_url, "models"))
             .header("authorization", format!("Bearer {}", ai.api_key)),
     };
     let resp = req
@@ -636,5 +650,29 @@ mod tests {
     fn parses_models_empty_when_no_data() {
         assert!(parse_models_response(&json!({})).is_empty());
         assert!(parse_models_response(&json!({ "data": [] })).is_empty());
+    }
+
+    #[test]
+    fn openai_endpoint_normalizes_v1() {
+        // 官方 base 自带 /v1
+        assert_eq!(
+            openai_endpoint("https://api.openai.com/v1", "responses"),
+            "https://api.openai.com/v1/responses"
+        );
+        // 网关 base 不带 /v1 → 自动补
+        assert_eq!(
+            openai_endpoint("https://qi-token.qiekj.com", "models"),
+            "https://qi-token.qiekj.com/v1/models"
+        );
+        // 带尾斜杠
+        assert_eq!(
+            openai_endpoint("https://gw.example.com/", "responses"),
+            "https://gw.example.com/v1/responses"
+        );
+        // 已带 /v1 + 尾斜杠
+        assert_eq!(
+            openai_endpoint("https://gw.example.com/v1/", "models"),
+            "https://gw.example.com/v1/models"
+        );
     }
 }
