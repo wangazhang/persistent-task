@@ -270,10 +270,17 @@ export default function QuickRecordWindow() {
   const flowOn = phase === "parsing" || phase === "committing";
 
   return (
-    <div className="h-screen w-screen p-6 bg-transparent">
+    <div className="relative h-screen w-screen p-6 bg-transparent">
+      {/* 跟随柔光斑：在面板背后绕圈，向外溢到 padding 区可见。z-0 低于面板 */}
+      {flowOn && (
+        <div
+          aria-hidden
+          className="qr-flow-glow qr-flow-glow--on pointer-events-none absolute inset-6 z-0 rounded-2xl"
+        />
+      )}
       <div
         className={cn(
-          "qr-window-enter qr-panel-flow h-full w-full flex flex-col overflow-hidden rounded-2xl border border-white/50 bg-white/95 backdrop-blur-2xl",
+          "qr-window-enter qr-panel-flow relative z-10 h-full w-full flex flex-col overflow-hidden rounded-2xl border border-white/50 bg-white/95 backdrop-blur-2xl",
           haloClass,
           flowOn && "qr-panel-flow--on"
         )}

@@ -129,60 +129,56 @@
 
 /* ── 2. AI 多色 halo（弹窗外光圈，状态自适应）──
  *
- * 用 box-shadow 多层叠加。三个状态切类名即可：
- *   .qr-halo-idle    输入态 baseline
- *   .qr-halo-thinking 解析中（呼吸 + 强度↑）
+ * 用 box-shadow 多层叠加。状态切类名即可：
+ *   .qr-halo-idle    输入/确认态——更饱和、收紧的彩色光圈（一眼可见）
+ *   .qr-halo-thinking 解析中——只留克制的紧致底光（宽紫晕已删，主角让给流光）
  *   .qr-halo-error   错误态（rose 染色）
  *   .qr-halo-success 完成态（success 染色，逐渐淡出）
  *
- * 颜色取自项目 brand-500 #6366f1、violet-500 #8b5cf6、cyan-400 #22d3ee
- * 饱和度统一压在 ~30% 以下，避免赛博朋克炫光。
- *
- * 半径收紧到 ≤44px，配合根容器 p-6 透明内边距才能完整显示——
- * 否则面板铺满窗口时光圈溢出被 OS 窗口矩形裁掉（之前不可见的根因）。
+ * 颜色取自项目 brand-500 #6366f1、violet-500 #8b5cf6、cyan-400 #22d3ee。
+ * 半径收紧到 ≤40px、把饱和度抬上来，让 p-6 的 24px 透明边距内"实"而非淡。
  */
 .qr-halo-idle {
   box-shadow:
-    0 0 0 1px rgba(99, 102, 241, 0.22),
-    0 2px 12px -2px rgba(15, 23, 42, 0.12),
-    0 6px 24px -6px rgba(99, 102, 241, 0.32),
-    0 0 30px -2px rgba(139, 92, 246, 0.24),
-    0 0 44px 2px rgba(34, 211, 238, 0.14);
+    0 0 0 1px rgba(99, 102, 241, 0.35),
+    0 2px 14px -2px rgba(15, 23, 42, 0.14),
+    0 6px 22px -4px rgba(99, 102, 241, 0.46),
+    0 0 28px -2px rgba(139, 92, 246, 0.40),
+    0 0 40px 0px rgba(34, 211, 238, 0.24);
 }
+/* 解析态底光：紧致、克制——不再有宽紫晕，AI 感交给流光 + 跟随柔光斑 */
 .qr-halo-thinking {
-  animation: qr-halo-breathe 2.4s ease-in-out infinite;
+  animation: qr-halo-breathe-tight 2.6s ease-in-out infinite;
 }
-@keyframes qr-halo-breathe {
+@keyframes qr-halo-breathe-tight {
   0%, 100% {
     box-shadow:
-      0 0 0 1px rgba(99, 102, 241, 0.30),
-      0 4px 16px -2px rgba(15, 23, 42, 0.12),
-      0 8px 28px -6px rgba(99, 102, 241, 0.38),
-      0 0 36px -2px rgba(139, 92, 246, 0.30),
-      0 0 52px 2px rgba(34, 211, 238, 0.18);
+      0 0 0 1px rgba(99, 102, 241, 0.40),
+      0 2px 14px -2px rgba(15, 23, 42, 0.14),
+      0 6px 20px -4px rgba(99, 102, 241, 0.42),
+      0 0 24px -4px rgba(139, 92, 246, 0.26);
   }
   50% {
     box-shadow:
-      0 0 0 1px rgba(99, 102, 241, 0.45),
-      0 6px 22px -2px rgba(15, 23, 42, 0.14),
-      0 10px 36px -6px rgba(99, 102, 241, 0.50),
-      0 0 48px -2px rgba(139, 92, 246, 0.40),
-      0 0 64px 4px rgba(34, 211, 238, 0.24);
+      0 0 0 1px rgba(99, 102, 241, 0.50),
+      0 2px 16px -2px rgba(15, 23, 42, 0.16),
+      0 8px 24px -4px rgba(99, 102, 241, 0.52),
+      0 0 30px -4px rgba(139, 92, 246, 0.32);
   }
 }
 .qr-halo-error {
   box-shadow:
-    0 0 0 1px rgba(244, 63, 94, 0.30),
-    0 4px 16px -2px rgba(15, 23, 42, 0.12),
-    0 8px 28px -6px rgba(244, 63, 94, 0.34),
-    0 0 36px -2px rgba(244, 63, 94, 0.20);
+    0 0 0 1px rgba(244, 63, 94, 0.34),
+    0 2px 14px -2px rgba(15, 23, 42, 0.14),
+    0 6px 22px -4px rgba(244, 63, 94, 0.40),
+    0 0 30px -2px rgba(244, 63, 94, 0.22);
 }
 .qr-halo-success {
   box-shadow:
-    0 0 0 1px rgba(16, 185, 129, 0.32),
-    0 4px 16px -2px rgba(15, 23, 42, 0.12),
-    0 8px 28px -6px rgba(16, 185, 129, 0.36),
-    0 0 40px -2px rgba(16, 185, 129, 0.22);
+    0 0 0 1px rgba(16, 185, 129, 0.34),
+    0 2px 14px -2px rgba(15, 23, 42, 0.14),
+    0 6px 22px -4px rgba(16, 185, 129, 0.42),
+    0 0 32px -2px rgba(16, 185, 129, 0.24);
   transition: box-shadow 600ms ease-out;
 }
 
@@ -191,11 +187,15 @@
   transition: box-shadow 360ms ease-out;
 }
 
-/* ── 2b. 弹窗流光边框（仅解析时旋转）──
+/* ── 2b. 弹窗流光（仅解析时）——一道彗星式亮光绕边流动 ──
  *
- * 与入口按钮的 .qr-magic-border 同技术（conic-gradient + 双 mask 抠边），
- * 但默认 opacity:0 不显；加 .qr-panel-flow--on 才显现并旋转。
- * 这样确认态用户专注编辑时流光停下（不打扰），解析中才强调"AI 在工作"。
+ * 两层组合：
+ *   .qr-panel-flow::before  边框上那道清晰亮线（白热核心 + violet/cyan 拖尾）
+ *   .qr-flow-glow           弹窗背后跟着光头走的一团柔光（让那道光"发光、在流动"）
+ *
+ * 与入口按钮同技术（conic-gradient + 双 mask 抠边），但默认 opacity:0；
+ * 加 --on 才显现并旋转。两层共用 --qr-magic-angle + 3s，所以柔光斑严丝合缝
+ * 地跟在边框亮线后面。确认态流光停下（不打扰编辑）。
  */
 .qr-panel-flow {
   position: relative;
@@ -206,14 +206,18 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  padding: 1.5px;
+  padding: 2px;
+  /* 一道 ~70° 的彗星：亮头白热核心，向后 violet→cyan 拖尾，其余透明 */
   background: conic-gradient(
     from var(--qr-magic-angle),
     rgba(99, 102, 241, 0)        0deg,
-    rgba(99, 102, 241, 0.90)    55deg,
-    rgba(139, 92, 246, 1)      100deg,
-    rgba(34, 211, 238, 0.90)   145deg,
-    rgba(99, 102, 241, 0)      230deg,
+    rgba(99, 102, 241, 0)       18deg,
+    rgba(129, 140, 248, 0.85)   30deg,
+    rgba(196, 181, 253, 1)      40deg,
+    rgba(255, 255, 255, 0.98)   45deg,
+    rgba(139, 92, 246, 1)       52deg,
+    rgba(34, 211, 238, 0.80)    66deg,
+    rgba(34, 211, 238, 0)       88deg,
     rgba(99, 102, 241, 0)      360deg
   );
   -webkit-mask:
@@ -227,7 +231,30 @@
 }
 .qr-panel-flow--on::before {
   opacity: 1;
-  animation: qr-magic-spin 2.6s linear infinite;
+  animation: qr-magic-spin 3s linear infinite;
+}
+
+/* 跟随柔光斑：放在弹窗背后（z 低于面板），亮扇区被 blur 糊成一团光，
+   随角度绕圈跑；向外溢到 padding 区可见，向内被白色面板挡住。
+   注意它是"会动的一小团"，不是静止整圈宽晕——所以不会变回不想要的宽紫光晕。 */
+.qr-flow-glow {
+  background: conic-gradient(
+    from var(--qr-magic-angle),
+    rgba(99, 102, 241, 0)        0deg,
+    rgba(99, 102, 241, 0)       22deg,
+    rgba(139, 92, 246, 0.55)    42deg,
+    rgba(99, 102, 241, 0.45)    50deg,
+    rgba(34, 211, 238, 0.30)    64deg,
+    rgba(34, 211, 238, 0)       92deg,
+    rgba(99, 102, 241, 0)      360deg
+  );
+  filter: blur(11px);
+  opacity: 0;
+  transition: opacity 320ms ease-out;
+}
+.qr-flow-glow--on {
+  opacity: 1;
+  animation: qr-magic-spin 3s linear infinite;
 }
 
 /* ── 3. 流光边框（入口按钮 + 输入按钮通用）──
