@@ -99,6 +99,8 @@ async function loadStatus(): Promise<McpStatus> {
 }
 
 export function AdvancedPage() {
+  // 高级设置分 Tab：mcp（MCP 服务 + 权限）/ ai（AI 录入）
+  const [tab, setTab] = useState<"mcp" | "ai">("mcp");
   const [settings, setSettings] = useState<McpSettings | null>(null);
   const [status, setStatus] = useState<McpStatus>({ running: false, port: null });
   const [busy, setBusy] = useState(false);
@@ -316,6 +318,40 @@ export function AdvancedPage() {
         </div>
       )}
 
+      {/* Tab 导航：按领域分类 */}
+      <div className="flex gap-1 border-b border-ink-200">
+        {(
+          [
+            { key: "mcp" as const, label: "MCP 服务", icon: Server },
+            ...(isTauri()
+              ? [{ key: "ai" as const, label: "AI 录入", icon: Sparkles }]
+              : []),
+          ]
+        ).map((t) => {
+          const Icon = t.icon;
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={`relative flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors ${
+                active ? "text-brand-600" : "text-ink-500 hover:text-ink-800"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {t.label}
+              {active && (
+                <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brand-600" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* MCP 服务 + 权限 */}
+      {tab === "mcp" && (
+        <div className="space-y-6">
       {/* MCP 服务 */}
       <section className="rounded-xl border border-ink-200 bg-white p-5">
         <div className="mb-4 flex items-center gap-2">
@@ -447,9 +483,11 @@ export function AdvancedPage() {
           </div>
         </div>
       </section>
+        </div>
+      )}
 
       {/* AI 录入 —— 仅 Tauri 环境显示 */}
-      {isTauri() && (
+      {tab === "ai" && isTauri() && (
         <section className="rounded-xl border border-ink-200 bg-white p-5">
           <div className="mb-4 flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-brand-600" />
