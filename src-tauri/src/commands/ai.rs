@@ -107,15 +107,6 @@ pub struct TagLite {
     pub name: String,
 }
 
-/// 前端命令返回的 AI 配置视图：不回传明文 Key（仅暴露是否已配置）。
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AiSettingsView {
-    pub has_key: bool,
-    pub model: String,
-    pub base_url: String,
-}
-
 /// 未配置 Key 的错误标记 —— 前端识别后引导去「高级」设置页。
 pub const ERR_AI_NOT_CONFIGURED: &str = "AI_NOT_CONFIGURED";
 
@@ -151,7 +142,7 @@ fn build_system_prompt(today: &str, tags: &[TagLite]) -> String {
             .join("\n")
     };
     format!(
-        "你是任务录入助手。把用户的一段自由文本拆解成结构化任务，调用 {EMIT_TASKS} 工具输出。\n\
+        "你是任务录入助手。把用户的一段自由文本拆解成结构化任务列表（输出 tasks 数组）。\n\
         \n\
         今天是 {today}{weekday}。所有相对时间（“明天”“周五”“下周一”等）都要换算成绝对日期 YYYY-MM-DD。\n\
         \n\
@@ -217,9 +208,96 @@ fn extract_tool_use_input(response: &Value) -> Option<Value> {
         .and_then(|block| block.get("input").cloned())
 }
 
+/// OpenAI Responses API 的结构化输出 JSON Schema（strict 模式要求：
+/// 每个对象 additionalProperties=false 且所有字段都在 required 里）。
+/// parse_emit_tasks_input 本身容错，所以"全部 required 但允许空值"没问题。
+fn build_emit_tasks_schema_strict() -> Value {
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "tasks": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "title": { "type": "string", "description": "简洁的任务标题" },
+                        "description": { "type": "string", "description": "补充细节，没有则空串" },
+                        "priority": { "type": "string", "enum": ["p0", "p1", "p2"] },
+                        "scheduledDates": { "type": "array", "items": { "type": "string" } },
+                        "matchedTagIds": { "type": "array", "items": { "type": "string" } },
+                        "newTagNames": { "type": "array", "items": { "type": "string" } }
+                    },
+                    "required": [
+                        "title", "description", "priority",
+                        "scheduledDates", "matchedTagIds", "newTagNames"
+                    ]
+                }
+            }
+        },
+        "required": ["tasks"]
+    })
+}
+
+/// 从 OpenAI Responses API 响应里取出结构化输出（解析成 {tasks:[...]} Value）。
+///
+/// 响应形如 `{ output: [ { type:"message", content:[ {type:"output_text", text:"<json>"} ] } ] }`。
+/// 遍历 output 找 message → 取第一个 output_text 文本，按 JSON 解析；
+/// 命中 refusal（安全拒答）→ 返回明确错误。
+fn extract_openai_responses_output(response: &Value) -> Result<Value, String> {
+    let output = response
+        .get("output")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "OpenAI 响应缺少 output 字段".to_string())?;
+    for item in output {
+        if item.get("type").and_then(|t| t.as_str()) != Some("message") {
+            continue; // 跳过 reasoning 等非 message 项
+        }
+        let Some(content) = item.get("content").and_then(|c| c.as_array()) else {
+            continue;
+        };
+        for block in content {
+            match block.get("type").and_then(|t| t.as_str()) {
+                Some("output_text") | Some("text") => {
+                    let text = block.get("text").and_then(|t| t.as_str()).unwrap_or("");
+                    return serde_json::from_str(text)
+                        .map_err(|e| format!("结构化输出 JSON 解析失败：{e}"));
+                }
+                Some("refusal") => {
+                    let r = block
+                        .get("refusal")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("模型拒绝了该请求");
+                    return Err(format!("模型拒绝：{r}"));
+                }
+                _ => {}
+            }
+        }
+    }
+    Err("OpenAI 响应中没有结构化输出文本".to_string())
+}
+
+/// 从 /v1/models 响应里取出模型 id 列表。OpenAI 与 Anthropic 都是 {data:[{id}]}。
+fn parse_models_response(response: &Value) -> Vec<String> {
+    response
+        .get("data")
+        .and_then(|d| d.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| m.get("id").and_then(|i| i.as_str()).map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// 解析用户自由文本为任务草稿。只读、无副作用：不写 store / DB。
 ///
-/// 失败时返回字符串错误；未配置 Key 返回 [`ERR_AI_NOT_CONFIGURED`] 供前端识别。
+/// 按激活 provider 路由：Anthropic 走 Messages API（强制 tool_use），
+/// OpenAI 走 Responses API（text.format json_schema 结构化输出）；
+/// 两者都产出 {tasks:[...]}，复用 parse_emit_tasks_input。
+///
+/// 未配置 Key 返回 [`ERR_AI_NOT_CONFIGURED`] 供前端识别。
 #[tauri::command]
 pub async fn parse_quick_input(
     state: tauri::State<'_, AppState>,
@@ -234,61 +312,136 @@ pub async fn parse_quick_input(
     }
     let allowed: HashSet<String> = tags.iter().map(|t| t.id.clone()).collect();
     let system = build_system_prompt(&today, &tags);
-    let body = serde_json::json!({
-        "model": ai.model,
-        "max_tokens": MAX_TOKENS,
-        "system": system,
-        "tools": [build_emit_tasks_tool()],
-        "tool_choice": { "type": "tool", "name": EMIT_TASKS },
-        "messages": [{ "role": "user", "content": text }],
-    });
+    let client = reqwest::Client::new();
+    let base = ai.base_url.trim_end_matches('/');
 
-    let url = format!("{}/v1/messages", ai.base_url.trim_end_matches('/'));
-    let resp = reqwest::Client::new()
-        .post(&url)
-        .header("x-api-key", &ai.api_key)
-        .header("anthropic-version", ANTHROPIC_VERSION)
-        .header("content-type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("请求 Anthropic 失败：{e}"))?;
+    let tasks_value: Value = match ai.provider {
+        settings::AiProvider::Anthropic => {
+            let body = serde_json::json!({
+                "model": ai.model,
+                "max_tokens": MAX_TOKENS,
+                "system": system,
+                "tools": [build_emit_tasks_tool()],
+                "tool_choice": { "type": "tool", "name": EMIT_TASKS },
+                "messages": [{ "role": "user", "content": text }],
+            });
+            let resp = client
+                .post(format!("{base}/v1/messages"))
+                .header("x-api-key", &ai.api_key)
+                .header("anthropic-version", ANTHROPIC_VERSION)
+                .header("content-type", "application/json")
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| format!("请求 Anthropic 失败：{e}"))?;
+            let value = read_json_or_err(resp, "Anthropic").await?;
+            extract_tool_use_input(&value)
+                .ok_or_else(|| "响应中没有 emit_tasks 工具调用".to_string())?
+        }
+        settings::AiProvider::Openai => {
+            let body = serde_json::json!({
+                "model": ai.model,
+                "input": [
+                    { "role": "system", "content": system },
+                    { "role": "user", "content": text },
+                ],
+                "text": {
+                    "format": {
+                        "type": "json_schema",
+                        "name": EMIT_TASKS,
+                        "strict": true,
+                        "schema": build_emit_tasks_schema_strict(),
+                    }
+                },
+            });
+            let resp = client
+                .post(format!("{base}/responses"))
+                .header("authorization", format!("Bearer {}", ai.api_key))
+                .header("content-type", "application/json")
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| format!("请求 OpenAI 失败：{e}"))?;
+            let value = read_json_or_err(resp, "OpenAI").await?;
+            extract_openai_responses_output(&value)?
+        }
+    };
 
+    Ok(parse_emit_tasks_input(&tasks_value, &allowed))
+}
+
+/// 读响应：非 2xx 抛带摘要的错误，2xx 解析为 JSON。
+async fn read_json_or_err(resp: reqwest::Response, who: &str) -> Result<Value, String> {
     let status = resp.status();
     let payload = resp.text().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
         let snippet: String = payload.chars().take(500).collect();
-        return Err(format!("Anthropic 返回 {status}：{snippet}"));
+        return Err(format!("{who} 返回 {status}：{snippet}"));
     }
-
-    let value: Value = serde_json::from_str(&payload)
-        .map_err(|e| format!("解析响应 JSON 失败：{e}"))?;
-    let input = extract_tool_use_input(&value)
-        .ok_or_else(|| "响应中没有 emit_tasks 工具调用".to_string())?;
-    Ok(parse_emit_tasks_input(&input, &allowed))
+    serde_json::from_str(&payload).map_err(|e| format!("解析响应 JSON 失败：{e}"))
 }
 
-/// 读取 AI 配置（不回传明文 Key，仅暴露是否已配置）。
+/// 读取 AI 配置完整视图（两 provider 都带，不回传明文 Key）。
 #[tauri::command]
-pub fn get_ai_settings(state: tauri::State<'_, AppState>) -> Result<AiSettingsView, String> {
-    let ai = settings::read_ai_settings(&state).map_err(|e| e.to_string())?;
-    Ok(AiSettingsView {
-        has_key: ai.has_key(),
-        model: ai.model,
-        base_url: ai.base_url,
-    })
+pub fn get_ai_settings(
+    state: tauri::State<'_, AppState>,
+) -> Result<settings::AiSettingsView, String> {
+    settings::read_ai_settings_view(&state).map_err(|e| e.to_string())
 }
 
-/// 写入 AI 配置。`api_key` 为 None 表示保持现有 Key 不变；Some("") 表示清空。
+/// 切换激活的 provider（"anthropic" | "openai"）。
+#[tauri::command]
+pub fn set_ai_provider(
+    state: tauri::State<'_, AppState>,
+    provider: String,
+) -> Result<(), String> {
+    let p = settings::AiProvider::from_str_lenient(&provider);
+    settings::set_ai_provider(&state, p).map_err(|e| e.to_string())
+}
+
+/// 写入指定 provider 的配置。`api_key` 为 None 表示保持现有 Key 不变；Some("") 表示清空。
 #[tauri::command]
 pub fn set_ai_settings(
     state: tauri::State<'_, AppState>,
+    provider: String,
     api_key: Option<String>,
     model: String,
     base_url: String,
 ) -> Result<(), String> {
-    settings::write_ai_settings(&state, api_key.as_deref(), &model, &base_url)
+    let p = settings::AiProvider::from_str_lenient(&provider);
+    settings::write_provider_settings(&state, p, api_key.as_deref(), &model, &base_url)
         .map_err(|e| e.to_string())
+}
+
+/// 拉取当前 provider 可用的模型 id 列表（GET /v1/models）。
+/// 需先配置好该 provider 的 Key。
+#[tauri::command]
+pub async fn list_ai_models(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let ai = settings::read_ai_settings(&state).map_err(|e| e.to_string())?;
+    if !ai.has_key() {
+        return Err(ERR_AI_NOT_CONFIGURED.to_string());
+    }
+    let client = reqwest::Client::new();
+    let base = ai.base_url.trim_end_matches('/');
+    let req = match ai.provider {
+        settings::AiProvider::Anthropic => client
+            .get(format!("{base}/v1/models"))
+            .header("x-api-key", &ai.api_key)
+            .header("anthropic-version", ANTHROPIC_VERSION),
+        settings::AiProvider::Openai => client
+            .get(format!("{base}/models"))
+            .header("authorization", format!("Bearer {}", ai.api_key)),
+    };
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("请求模型列表失败：{e}"))?;
+    let value = read_json_or_err(resp, "模型列表").await?;
+    let mut models = parse_models_response(&value);
+    models.sort();
+    Ok(models)
 }
 
 #[cfg(test)]
@@ -389,7 +542,7 @@ mod tests {
         assert!(p.contains("星期日")); // 2026-06-14 是周日
         assert!(p.contains("产品规划"));
         assert!(p.contains("tag-plan"));
-        assert!(p.contains(EMIT_TASKS));
+        assert!(p.contains("tasks")); // 提示里要求输出 tasks 数组
     }
 
     #[test]
@@ -418,5 +571,70 @@ mod tests {
     fn extract_returns_none_without_tool_use() {
         let resp = json!({ "content": [{ "type": "text", "text": "无工具调用" }] });
         assert!(extract_tool_use_input(&resp).is_none());
+    }
+
+    #[test]
+    fn extracts_openai_responses_output_text() {
+        // Responses API：output[] 里先有 reasoning 项，再有 message + output_text
+        let resp = json!({
+            "output": [
+                { "type": "reasoning", "summary": [] },
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [
+                        { "type": "output_text", "text": "{\"tasks\":[{\"title\":\"甲\"}]}" }
+                    ]
+                }
+            ]
+        });
+        let value = extract_openai_responses_output(&resp).expect("应取到结构化输出");
+        let out = parse_emit_tasks_input(&value, &tags(&[]));
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].title, "甲");
+    }
+
+    #[test]
+    fn openai_refusal_surfaces_error() {
+        let resp = json!({
+            "output": [
+                {
+                    "type": "message",
+                    "content": [
+                        { "type": "refusal", "refusal": "无法满足该请求" }
+                    ]
+                }
+            ]
+        });
+        let err = extract_openai_responses_output(&resp).unwrap_err();
+        assert!(err.contains("拒绝"));
+        assert!(err.contains("无法满足该请求"));
+    }
+
+    #[test]
+    fn openai_missing_output_errors() {
+        assert!(extract_openai_responses_output(&json!({})).is_err());
+        assert!(extract_openai_responses_output(&json!({ "output": [] })).is_err());
+    }
+
+    #[test]
+    fn parses_models_list() {
+        // OpenAI / Anthropic /v1/models 都是 {data:[{id}]}
+        let resp = json!({
+            "object": "list",
+            "data": [
+                { "id": "gpt-5-codex", "object": "model" },
+                { "id": "codex-mini-latest", "object": "model" },
+                { "id": "gpt-4o" }
+            ]
+        });
+        let models = parse_models_response(&resp);
+        assert_eq!(models, vec!["gpt-5-codex", "codex-mini-latest", "gpt-4o"]);
+    }
+
+    #[test]
+    fn parses_models_empty_when_no_data() {
+        assert!(parse_models_response(&json!({})).is_empty());
+        assert!(parse_models_response(&json!({ "data": [] })).is_empty());
     }
 }

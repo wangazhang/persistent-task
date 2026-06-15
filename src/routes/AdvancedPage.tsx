@@ -1,15 +1,43 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Server, Copy, Check, AlertTriangle, Sparkles } from "lucide-react";
+import {
+  Server,
+  Copy,
+  Check,
+  AlertTriangle,
+  Sparkles,
+  RefreshCw,
+  Loader2,
+} from "lucide-react";
 import { isTauri } from "../lib/dataAdapter";
 import {
   getAiSettings,
   setAiSettings,
+  setAiProvider,
+  listAiModels,
+  ERR_AI_NOT_CONFIGURED,
   type AiSettings,
+  type AiProvider,
 } from "../lib/aiParse";
 
-const AI_DEFAULT_MODEL = "claude-sonnet-4-6";
-const AI_DEFAULT_BASE_URL = "https://api.anthropic.com";
+// 各 provider 的占位默认（与 Rust 端 settings DEFAULT_* 对齐）
+const PROVIDER_META: Record<
+  AiProvider,
+  { label: string; modelPlaceholder: string; baseUrlDefault: string; keyHint: string }
+> = {
+  anthropic: {
+    label: "Anthropic",
+    modelPlaceholder: "claude-sonnet-4-6",
+    baseUrlDefault: "https://api.anthropic.com",
+    keyHint: "sk-ant-...",
+  },
+  openai: {
+    label: "OpenAI Codex",
+    modelPlaceholder: "点「获取模型」从列表选",
+    baseUrlDefault: "https://api.openai.com/v1",
+    keyHint: "sk-...",
+  },
+};
 
 type McpSettings = {
   httpEnabled: boolean;
@@ -77,8 +105,10 @@ export function AdvancedPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // AI 录入设置：表单受控字段，与远端 AiSettings 分离
+  // AI 录入设置（多 provider）
   const [aiSettings, setAiSettingsState] = useState<AiSettings | null>(null);
+  const [activeProvider, setActiveProvider] = useState<AiProvider>("anthropic");
+  // 当前激活 provider 的表单受控字段
   const [aiKeyInput, setAiKeyInput] = useState("");
   const [aiKeyDirty, setAiKeyDirty] = useState(false);
   const [aiModelInput, setAiModelInput] = useState("");
@@ -86,6 +116,10 @@ export function AdvancedPage() {
   const [aiSaving, setAiSaving] = useState(false);
   const [aiSaved, setAiSaved] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  // 模型列表（当前 provider）
+  const [aiModels, setAiModels] = useState<string[]>([]);
+  const [aiModelsLoading, setAiModelsLoading] = useState(false);
+  const [aiModelsError, setAiModelsError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -102,16 +136,27 @@ export function AdvancedPage() {
     refresh();
   }, [refresh]);
 
-  // 拉取 AI 录入设置（仅 Tauri 环境）
+  // 把某 provider 的视图灌进表单（key 永远清空 + 非 dirty）
+  function loadProviderIntoForm(s: AiSettings, provider: AiProvider) {
+    const v = s[provider];
+    setAiModelInput(v.model);
+    setAiBaseUrlInput(v.baseUrl);
+    setAiKeyInput("");
+    setAiKeyDirty(false);
+    setAiModels([]);
+    setAiModelsError(null);
+    setAiError(null);
+  }
+
+  // 拉取 AI 配置（仅 Tauri）：初始化激活 provider + 表单
   const refreshAi = useCallback(async () => {
     if (!isTauri()) return;
     try {
       const s = await getAiSettings();
       if (!s) return;
       setAiSettingsState(s);
-      setAiModelInput(s.model);
-      setAiBaseUrlInput(s.baseUrl);
-      setAiError(null);
+      setActiveProvider(s.provider);
+      loadProviderIntoForm(s, s.provider);
     } catch (e) {
       setAiError(String(e));
     }
@@ -121,17 +166,44 @@ export function AdvancedPage() {
     refreshAi();
   }, [refreshAi]);
 
+  // 切换 provider tab：立即持久化激活 provider + 切表单
+  async function switchProvider(provider: AiProvider) {
+    if (provider === activeProvider) return;
+    setActiveProvider(provider);
+    if (aiSettings) loadProviderIntoForm(aiSettings, provider);
+    try {
+      await setAiProvider(provider);
+    } catch (e) {
+      setAiError(String(e));
+    }
+  }
+
+  // 获取模型列表（用当前已保存的 provider key）
+  async function fetchModels() {
+    setAiModelsLoading(true);
+    setAiModelsError(null);
+    const r = await listAiModels();
+    if (r.ok) {
+      setAiModels(r.models);
+      if (r.models.length === 0) setAiModelsError("该 Key 下没有可用模型");
+    } else {
+      setAiModelsError(
+        r.error.includes(ERR_AI_NOT_CONFIGURED)
+          ? "请先填写并保存 API Key，再获取模型"
+          : r.error
+      );
+    }
+    setAiModelsLoading(false);
+  }
+
   const saveAiSettings = async () => {
     setAiSaving(true);
     setAiError(null);
     try {
       // apiKey 三态语义：未动过=undefined（保持），输入了内容=该值，留空但 dirty=""（清空回退环境变量）
       const apiKey = aiKeyDirty ? aiKeyInput : undefined;
-      await setAiSettings(apiKey, aiModelInput, aiBaseUrlInput);
-      // 写完重新拉一次：服务端会回传新的 hasKey + 兜底后的 model/baseUrl
+      await setAiSettings(activeProvider, apiKey, aiModelInput, aiBaseUrlInput);
       await refreshAi();
-      setAiKeyInput("");
-      setAiKeyDirty(false);
       setAiSaved(true);
       setTimeout(() => setAiSaved(false), 1500);
     } catch (e) {
@@ -384,34 +456,53 @@ export function AdvancedPage() {
             <h2 className="text-base font-semibold text-ink-800">AI 录入</h2>
             <span
               className={`ml-auto rounded-full px-2 py-0.5 text-xs ${
-                aiSettings?.hasKey
+                aiSettings?.[activeProvider].hasKey
                   ? "bg-emerald-50 text-emerald-700"
                   : "bg-ink-100 text-ink-500"
               }`}
             >
-              {aiSettings?.hasKey ? "已配置" : "未配置"}
+              {aiSettings?.[activeProvider].hasKey ? "已配置" : "未配置"}
             </span>
           </div>
 
           <p className="mb-4 text-sm text-ink-500 leading-relaxed">
-            配置 Anthropic API Key 以启用「快速录入」中的自由文本 → 任务草稿解析。
-            未配置时，快速录入仍可用结构化方式工作。
+            配置 AI 模型以启用「快速录入」中的自由文本 → 任务草稿解析。
+            支持 Anthropic 与 OpenAI Codex，可分别配置、随时切换。
           </p>
+
+          {/* Provider 分段切换：切换即设为当前使用的 provider */}
+          <div className="mb-4 inline-flex rounded-lg border border-ink-200 bg-ink-50 p-0.5">
+            {(["anthropic", "openai"] as AiProvider[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => void switchProvider(p)}
+                className={`relative rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  activeProvider === p
+                    ? "bg-white text-ink-800 shadow-sm"
+                    : "text-ink-500 hover:text-ink-700"
+                }`}
+              >
+                {PROVIDER_META[p].label}
+                {aiSettings?.[p].hasKey && (
+                  <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 align-middle" />
+                )}
+              </button>
+            ))}
+          </div>
 
           <div className="space-y-3">
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-ink-600">
-                API Key
-              </label>
+              <label className="text-xs font-medium text-ink-600">API Key</label>
               <input
                 type="password"
                 autoComplete="off"
                 spellCheck={false}
                 value={aiKeyInput}
                 placeholder={
-                  aiSettings?.hasKey
+                  aiSettings?.[activeProvider].hasKey
                     ? "已配置（输入新值覆盖）"
-                    : "sk-ant-..."
+                    : PROVIDER_META[activeProvider].keyHint
                 }
                 onChange={(e) => {
                   setAiKeyInput(e.target.value);
@@ -429,17 +520,47 @@ export function AdvancedPage() {
 
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-ink-600">模型</label>
-              <input
-                type="text"
-                value={aiModelInput}
-                placeholder={AI_DEFAULT_MODEL}
-                onChange={(e) => setAiModelInput(e.target.value)}
-                disabled={aiSaving}
-                className="rounded-md border border-ink-200 px-2 py-1 text-sm"
-              />
-              <span className="text-[11px] text-ink-400">
-                留空则使用默认 {AI_DEFAULT_MODEL}
-              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  list="ai-model-options"
+                  value={aiModelInput}
+                  placeholder={PROVIDER_META[activeProvider].modelPlaceholder}
+                  onChange={(e) => setAiModelInput(e.target.value)}
+                  disabled={aiSaving}
+                  className="flex-1 rounded-md border border-ink-200 px-2 py-1 text-sm"
+                />
+                <datalist id="ai-model-options">
+                  {aiModels.map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+                <button
+                  type="button"
+                  onClick={() => void fetchModels()}
+                  disabled={aiModelsLoading || aiSaving}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-ink-200 px-2.5 py-1 text-xs text-ink-600 hover:border-ink-300 hover:text-ink-800 disabled:opacity-50"
+                  title="从该 provider 拉取可用模型列表"
+                >
+                  {aiModelsLoading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  获取模型
+                </button>
+              </div>
+              {aiModelsError ? (
+                <span className="text-[11px] text-amber-600">{aiModelsError}</span>
+              ) : aiModels.length > 0 ? (
+                <span className="text-[11px] text-ink-400">
+                  已拉取 {aiModels.length} 个模型，点输入框从下拉选，或直接手填
+                </span>
+              ) : (
+                <span className="text-[11px] text-ink-400">
+                  可手填，或保存 Key 后点「获取模型」拉列表
+                </span>
+              )}
             </div>
 
             <div className="flex flex-col gap-1">
@@ -449,13 +570,13 @@ export function AdvancedPage() {
               <input
                 type="text"
                 value={aiBaseUrlInput}
-                placeholder={AI_DEFAULT_BASE_URL}
+                placeholder={PROVIDER_META[activeProvider].baseUrlDefault}
                 onChange={(e) => setAiBaseUrlInput(e.target.value)}
                 disabled={aiSaving}
                 className="rounded-md border border-ink-200 px-2 py-1 text-sm"
               />
               <span className="text-[11px] text-ink-400">
-                留空则使用官方 {AI_DEFAULT_BASE_URL}
+                留空则使用官方 {PROVIDER_META[activeProvider].baseUrlDefault}
               </span>
             </div>
           </div>
@@ -479,13 +600,14 @@ export function AdvancedPage() {
                   <Check className="h-3.5 w-3.5" /> 已保存
                 </>
               ) : (
-                "保存"
+                `保存 ${PROVIDER_META[activeProvider].label} 配置`
               )}
             </button>
           </div>
 
           <p className="mt-4 text-[11px] text-ink-400 leading-relaxed">
-            Key 以明文存本地 SQLite，不上传，不出 Rust 进程之外的网络（仅 Rust → Anthropic）。
+            Key 以明文存本地 SQLite，不上传，不出 Rust 进程之外的网络（仅 Rust →{" "}
+            {activeProvider === "anthropic" ? "Anthropic" : "OpenAI"}）。
           </p>
         </section>
       )}

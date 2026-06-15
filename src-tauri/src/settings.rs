@@ -22,18 +22,34 @@ pub const KEY_ALLOW_DESTRUCTIVE: &str = "mcp.allow_destructive";
 
 pub const DEFAULT_PORT: u16 = 7321;
 
-// ── AI 快速录入 ──
-//   ai.anthropic_api_key  string — Anthropic API Key（明文存本地 SQLite；为空时回退环境变量）
-//   ai.model              string — 模型 id（默认 claude-sonnet-4-6，抽取类任务足够且更快更省）
-//   ai.base_url           string — 可选，自建网关 / 代理地址（默认官方）
-pub const KEY_AI_API_KEY: &str = "ai.anthropic_api_key";
-pub const KEY_AI_MODEL: &str = "ai.model";
-pub const KEY_AI_BASE_URL: &str = "ai.base_url";
+// ── AI 快速录入（多 provider）──
+//   ai.provider             "anthropic" | "openai"   激活的 provider（默认 anthropic）
+//   ai.anthropic_api_key    Anthropic API Key（明文本地 SQLite；空时回退 ANTHROPIC_API_KEY）
+//   ai.anthropic_model      模型 id（默认 claude-sonnet-4-6）
+//   ai.anthropic_base_url   自建网关 / 代理（默认 https://api.anthropic.com）
+//   ai.openai_api_key       OpenAI API Key（空时回退 OPENAI_API_KEY）
+//   ai.openai_model         模型 id（无预设，用户从 /v1/models 拉列表选）
+//   ai.openai_base_url      默认 https://api.openai.com/v1
+// 兼容：旧版的 ai.model / ai.base_url 作为 anthropic 的回退来源（读取时降级链）。
+pub const KEY_AI_PROVIDER: &str = "ai.provider";
+pub const KEY_AI_ANTHROPIC_API_KEY: &str = "ai.anthropic_api_key";
+pub const KEY_AI_ANTHROPIC_MODEL: &str = "ai.anthropic_model";
+pub const KEY_AI_ANTHROPIC_BASE_URL: &str = "ai.anthropic_base_url";
+pub const KEY_AI_OPENAI_API_KEY: &str = "ai.openai_api_key";
+pub const KEY_AI_OPENAI_MODEL: &str = "ai.openai_model";
+pub const KEY_AI_OPENAI_BASE_URL: &str = "ai.openai_base_url";
 
-pub const DEFAULT_AI_MODEL: &str = "claude-sonnet-4-6";
-pub const DEFAULT_AI_BASE_URL: &str = "https://api.anthropic.com";
-/// API Key 为空时的环境变量兜底（仅 key 走兜底；model/base_url 用默认）
-pub const ENV_AI_API_KEY: &str = "ANTHROPIC_API_KEY";
+// 旧键（仅作 anthropic 的读取回退，不再写入）
+const LEGACY_AI_MODEL: &str = "ai.model";
+const LEGACY_AI_BASE_URL: &str = "ai.base_url";
+
+pub const DEFAULT_ANTHROPIC_MODEL: &str = "claude-sonnet-4-6";
+pub const DEFAULT_ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com";
+pub const DEFAULT_OPENAI_MODEL: &str = ""; // 无预设：用户拉列表选
+pub const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+
+pub const ENV_ANTHROPIC_API_KEY: &str = "ANTHROPIC_API_KEY";
+pub const ENV_OPENAI_API_KEY: &str = "OPENAI_API_KEY";
 
 pub fn get_raw(state: &AppState, key: &str) -> Result<Option<String>> {
     let conn = state.conn.lock();
@@ -111,57 +127,192 @@ pub fn read_mcp_settings(state: &AppState) -> Result<McpSettings> {
     })
 }
 
-/// AI 快速录入配置快照。`api_key` 已掺入环境变量兜底（前端展示前应做掩码）。
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+/// AI provider。默认 Anthropic。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AiProvider {
+    Anthropic,
+    Openai,
+}
+
+impl AiProvider {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AiProvider::Anthropic => "anthropic",
+            AiProvider::Openai => "openai",
+        }
+    }
+    /// 解析 provider 字符串；未知 / 空 → Anthropic（安全默认）
+    pub fn from_str_lenient(s: &str) -> Self {
+        match s.trim().to_lowercase().as_str() {
+            "openai" => AiProvider::Openai,
+            _ => AiProvider::Anthropic,
+        }
+    }
+}
+
+/// 激活 provider 的已解析 AI 配置（供 parse_quick_input 用）。
+/// `api_key` 已掺入环境变量兜底；可能为空串=未配置。
+#[derive(Debug, Clone)]
 pub struct AiSettings {
-    /// 生效的 API Key（settings 表为空时回退环境变量）。可能为空串=未配置。
+    pub provider: AiProvider,
     pub api_key: String,
     pub model: String,
     pub base_url: String,
 }
 
 impl AiSettings {
-    /// 是否已配置可用的 Key
     pub fn has_key(&self) -> bool {
         !self.api_key.trim().is_empty()
     }
 }
 
-/// 解析生效 API Key：settings 表值优先，为空时回退环境变量；空白串视作未设置。
-///
-/// 抽成纯函数便于单测（不触碰全局 env），调用方传入两个来源。
-pub fn resolve_api_key(table: Option<String>, env: Option<String>) -> String {
-    let pick = |v: Option<String>| v.filter(|s| !s.trim().is_empty());
-    pick(table).or_else(|| pick(env)).unwrap_or_default()
+/// 单个 provider 的前端视图（不回传明文 Key）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiProviderView {
+    pub has_key: bool,
+    pub model: String,
+    pub base_url: String,
 }
 
-/// 读取 AI 配置。Key 走 settings 表 → 环境变量兜底；model/base_url 缺省用默认值。
+/// 完整 AI 配置视图（get_ai_settings 返回，两 provider 都带）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiSettingsView {
+    pub provider: String,
+    pub anthropic: AiProviderView,
+    pub openai: AiProviderView,
+}
+
+/// 解析生效 API Key：settings 表值优先，为空时回退环境变量；空白串视作未设置。
+/// 纯函数便于单测（不触碰全局 env）。
+pub fn resolve_api_key(table: Option<String>, env: Option<String>) -> String {
+    first_non_empty(&[table, env]).unwrap_or_default()
+}
+
+/// 从一串 Option 里取第一个非空白值（trim 后非空）。
+pub fn first_non_empty(values: &[Option<String>]) -> Option<String> {
+    values
+        .iter()
+        .filter_map(|v| v.clone())
+        .find(|s| !s.trim().is_empty())
+}
+
+/// 取指定 key，空白视作 None。
+fn get_some(state: &AppState, key: &str) -> Result<Option<String>> {
+    Ok(get_raw(state, key)?.filter(|s| !s.trim().is_empty()))
+}
+
+/// 读取激活 provider 的已解析配置。
+///
+/// 解析链：
+/// - provider: ai.provider → anthropic
+/// - anthropic.model:    ai.anthropic_model → (旧)ai.model → DEFAULT_ANTHROPIC_MODEL
+/// - anthropic.base_url: ai.anthropic_base_url → (旧)ai.base_url → DEFAULT_ANTHROPIC_BASE_URL
+/// - openai.model/base_url: ai.openai_* → DEFAULT_OPENAI_*
+/// - key: 各自 settings → 各自环境变量兜底
 pub fn read_ai_settings(state: &AppState) -> Result<AiSettings> {
-    let table_key = get_raw(state, KEY_AI_API_KEY)?;
-    let env_key = std::env::var(ENV_AI_API_KEY).ok();
-    let model = get_raw(state, KEY_AI_MODEL)?
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| DEFAULT_AI_MODEL.to_string());
-    let base_url = get_raw(state, KEY_AI_BASE_URL)?
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| DEFAULT_AI_BASE_URL.to_string());
-    Ok(AiSettings {
-        api_key: resolve_api_key(table_key, env_key),
-        model,
-        base_url,
+    let provider = AiProvider::from_str_lenient(
+        &get_raw(state, KEY_AI_PROVIDER)?.unwrap_or_default(),
+    );
+    Ok(match provider {
+        AiProvider::Anthropic => AiSettings {
+            provider,
+            api_key: resolve_api_key(
+                get_some(state, KEY_AI_ANTHROPIC_API_KEY)?,
+                std::env::var(ENV_ANTHROPIC_API_KEY).ok(),
+            ),
+            model: first_non_empty(&[
+                get_some(state, KEY_AI_ANTHROPIC_MODEL)?,
+                get_some(state, LEGACY_AI_MODEL)?,
+            ])
+            .unwrap_or_else(|| DEFAULT_ANTHROPIC_MODEL.to_string()),
+            base_url: first_non_empty(&[
+                get_some(state, KEY_AI_ANTHROPIC_BASE_URL)?,
+                get_some(state, LEGACY_AI_BASE_URL)?,
+            ])
+            .unwrap_or_else(|| DEFAULT_ANTHROPIC_BASE_URL.to_string()),
+        },
+        AiProvider::Openai => AiSettings {
+            provider,
+            api_key: resolve_api_key(
+                get_some(state, KEY_AI_OPENAI_API_KEY)?,
+                std::env::var(ENV_OPENAI_API_KEY).ok(),
+            ),
+            model: get_some(state, KEY_AI_OPENAI_MODEL)?
+                .unwrap_or_else(|| DEFAULT_OPENAI_MODEL.to_string()),
+            base_url: get_some(state, KEY_AI_OPENAI_BASE_URL)?
+                .unwrap_or_else(|| DEFAULT_OPENAI_BASE_URL.to_string()),
+        },
     })
 }
 
-/// 写入 AI 配置。
-/// - `api_key` 为 `None` 表示保持现有 Key 不动；`Some("")`/空白 表示清空（回退默认/环境变量）。
-/// - `model` / `base_url` 空串表示清空该项（让其回退默认值）。
-pub fn write_ai_settings(
+/// 读取完整视图（两 provider 都带，不回传明文 Key），供前端配置页。
+pub fn read_ai_settings_view(state: &AppState) -> Result<AiSettingsView> {
+    let provider = AiProvider::from_str_lenient(
+        &get_raw(state, KEY_AI_PROVIDER)?.unwrap_or_default(),
+    );
+    let anthropic_key = resolve_api_key(
+        get_some(state, KEY_AI_ANTHROPIC_API_KEY)?,
+        std::env::var(ENV_ANTHROPIC_API_KEY).ok(),
+    );
+    let openai_key = resolve_api_key(
+        get_some(state, KEY_AI_OPENAI_API_KEY)?,
+        std::env::var(ENV_OPENAI_API_KEY).ok(),
+    );
+    Ok(AiSettingsView {
+        provider: provider.as_str().to_string(),
+        anthropic: AiProviderView {
+            has_key: !anthropic_key.trim().is_empty(),
+            model: first_non_empty(&[
+                get_some(state, KEY_AI_ANTHROPIC_MODEL)?,
+                get_some(state, LEGACY_AI_MODEL)?,
+            ])
+            .unwrap_or_else(|| DEFAULT_ANTHROPIC_MODEL.to_string()),
+            base_url: first_non_empty(&[
+                get_some(state, KEY_AI_ANTHROPIC_BASE_URL)?,
+                get_some(state, LEGACY_AI_BASE_URL)?,
+            ])
+            .unwrap_or_else(|| DEFAULT_ANTHROPIC_BASE_URL.to_string()),
+        },
+        openai: AiProviderView {
+            has_key: !openai_key.trim().is_empty(),
+            model: get_some(state, KEY_AI_OPENAI_MODEL)?
+                .unwrap_or_else(|| DEFAULT_OPENAI_MODEL.to_string()),
+            base_url: get_some(state, KEY_AI_OPENAI_BASE_URL)?
+                .unwrap_or_else(|| DEFAULT_OPENAI_BASE_URL.to_string()),
+        },
+    })
+}
+
+/// 切换激活 provider。
+pub fn set_ai_provider(state: &AppState, provider: AiProvider) -> Result<()> {
+    set_raw(state, KEY_AI_PROVIDER, provider.as_str())
+}
+
+/// 写入某个 provider 的配置。
+/// - `api_key` 为 `None` 表示保持现有 Key 不动；`Some("")`/空白 表示清空（回退环境变量）。
+/// - `model` / `base_url` 空串表示清空该项（回退默认）。
+pub fn write_provider_settings(
     state: &AppState,
+    provider: AiProvider,
     api_key: Option<&str>,
     model: &str,
     base_url: &str,
 ) -> Result<()> {
+    let (k_key, k_model, k_base) = match provider {
+        AiProvider::Anthropic => (
+            KEY_AI_ANTHROPIC_API_KEY,
+            KEY_AI_ANTHROPIC_MODEL,
+            KEY_AI_ANTHROPIC_BASE_URL,
+        ),
+        AiProvider::Openai => (
+            KEY_AI_OPENAI_API_KEY,
+            KEY_AI_OPENAI_MODEL,
+            KEY_AI_OPENAI_BASE_URL,
+        ),
+    };
     let upsert_or_clear = |key: &str, value: &str| -> Result<()> {
         if value.trim().is_empty() {
             delete(state, key)
@@ -170,10 +321,10 @@ pub fn write_ai_settings(
         }
     };
     if let Some(k) = api_key {
-        upsert_or_clear(KEY_AI_API_KEY, k)?;
+        upsert_or_clear(k_key, k)?;
     }
-    upsert_or_clear(KEY_AI_MODEL, model)?;
-    upsert_or_clear(KEY_AI_BASE_URL, base_url)?;
+    upsert_or_clear(k_model, model)?;
+    upsert_or_clear(k_base, base_url)?;
     Ok(())
 }
 
@@ -183,22 +334,50 @@ mod tests {
 
     #[test]
     fn api_key_prefers_table_then_env() {
-        // 表里有值：直接用表
         assert_eq!(
             resolve_api_key(Some("sk-table".into()), Some("sk-env".into())),
             "sk-table"
         );
-        // 表为空：回退环境变量
-        assert_eq!(
-            resolve_api_key(None, Some("sk-env".into())),
-            "sk-env"
-        );
-        // 表是空白串：视作未设置，回退环境变量
+        assert_eq!(resolve_api_key(None, Some("sk-env".into())), "sk-env");
         assert_eq!(
             resolve_api_key(Some("   ".into()), Some("sk-env".into())),
             "sk-env"
         );
-        // 都没有：空串
         assert_eq!(resolve_api_key(None, None), "");
+    }
+
+    #[test]
+    fn first_non_empty_picks_first_meaningful() {
+        // 第一个非空白
+        assert_eq!(
+            first_non_empty(&[Some("  ".into()), Some("a".into()), Some("b".into())]),
+            Some("a".to_string())
+        );
+        // 全空 / None → None
+        assert_eq!(
+            first_non_empty(&[None, Some("".into()), Some("\t".into())]),
+            None
+        );
+        // 模型解析链场景：specific 空、legacy 有值 → 用 legacy
+        assert_eq!(
+            first_non_empty(&[None, Some("claude-legacy".into())]),
+            Some("claude-legacy".to_string())
+        );
+    }
+
+    #[test]
+    fn provider_parse_defaults_to_anthropic() {
+        assert_eq!(AiProvider::from_str_lenient("openai"), AiProvider::Openai);
+        assert_eq!(AiProvider::from_str_lenient("OpenAI"), AiProvider::Openai);
+        assert_eq!(
+            AiProvider::from_str_lenient("anthropic"),
+            AiProvider::Anthropic
+        );
+        // 未知 / 空白 → Anthropic
+        assert_eq!(AiProvider::from_str_lenient("gpt"), AiProvider::Anthropic);
+        assert_eq!(AiProvider::from_str_lenient(""), AiProvider::Anthropic);
+        // round-trip
+        assert_eq!(AiProvider::Openai.as_str(), "openai");
+        assert_eq!(AiProvider::Anthropic.as_str(), "anthropic");
     }
 }

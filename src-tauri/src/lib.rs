@@ -101,6 +101,8 @@ pub fn run() {
             commands::ai::parse_quick_input,
             commands::ai::get_ai_settings,
             commands::ai::set_ai_settings,
+            commands::ai::set_ai_provider,
+            commands::ai::list_ai_models,
             tray::open_task_editor,
             tray::open_quick_record,
         ])
