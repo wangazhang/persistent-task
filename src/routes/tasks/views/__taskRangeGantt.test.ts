@@ -1,6 +1,7 @@
 // 用法：npx tsx src/routes/tasks/views/__taskRangeGantt.test.ts
 import type { Task } from "@/lib/types";
 import {
+  applyGanttSchedulePreview,
   buildGanttRows,
   makeScrollableGanttRange,
   makeTaskTimeRange,
@@ -135,6 +136,26 @@ eq(
   "dragging a continuous schedule shifts every day by delta",
   shiftContinuousSchedule(["2026-05-10", "2026-05-11", "2026-05-12"], 2),
   ["2026-05-12", "2026-05-13", "2026-05-14"]
+);
+eq(
+  "preview schedule overrides original dates before final commit",
+  buildGanttRows(
+    applyGanttSchedulePreview(
+      [makeTask({ id: "preview", scheduledDates: ["2026-05-10", "2026-05-11", "2026-05-12"] })],
+      {
+        taskId: "preview",
+        scheduledDates: [
+          "2026-05-08",
+          "2026-05-09",
+          "2026-05-10",
+          "2026-05-11",
+          "2026-05-12",
+        ],
+      }
+    ),
+    month
+  )[0].segments.map((s) => ({ startIndex: s.startIndex, endIndex: s.endIndex })),
+  [{ startIndex: 7, endIndex: 11 }]
 );
 eq(
   "resizing start clamps before the end",
