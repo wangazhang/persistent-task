@@ -257,6 +257,17 @@ pub fn open_quick_record<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     if let Some(pos) = manual_pos {
         let _ = window.set_position(pos);
     }
+
+    // 失焦自动 hide：点小窗以外任何地方（主窗口 / 别的应用 / 桌面）就消失。
+    // 只 hide 不重置，窗口复用，重开还是原样（用户要的"关闭但不清空"）。
+    let app_clone = app.clone();
+    window.on_window_event(move |event| {
+        if let WindowEvent::Focused(false) = event {
+            if let Some(w) = app_clone.get_webview_window(QUICK_RECORD_LABEL) {
+                let _ = w.hide();
+            }
+        }
+    });
     Ok(())
 }
 

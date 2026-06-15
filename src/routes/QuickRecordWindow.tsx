@@ -270,7 +270,14 @@ export default function QuickRecordWindow() {
   const flowOn = phase === "parsing" || phase === "committing";
 
   return (
-    <div className="relative h-screen w-screen p-6 bg-transparent">
+    <div
+      className="relative h-screen w-screen p-6 bg-transparent"
+      onMouseDown={(e) => {
+        // 点到根容器本身（面板外围那圈透明边距）= 空白处 → 关窗。
+        // 点面板内部时 e.target 是子元素，不等于 currentTarget，不关。
+        if (e.target === e.currentTarget) void closeWindow();
+      }}
+    >
       {/* 跟随柔光斑：在面板背后绕圈，向外溢到 padding 区可见。z-0 低于面板 */}
       {flowOn && (
         <div
