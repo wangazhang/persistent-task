@@ -98,13 +98,14 @@ export function TaskFilters({
       )}
 
       {showTags && (
-        <div className="flex items-start gap-2">
+        <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
             <TagHierarchyPicker
               mode="multi"
               value={tags}
               onChange={onTags}
               countByTagId={taskCountByTag}
+              compact
             />
           </div>
           {tags.length > 0 && (
@@ -113,7 +114,7 @@ export function TaskFilters({
               onClick={() => onTags([])}
               title="清除标签筛选"
               aria-label="清除标签筛选"
-              className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-ink-400 hover:bg-ink-100 hover:text-ink-700"
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-ink-400 hover:bg-ink-100 hover:text-ink-700"
             >
               <X className="h-3.5 w-3.5" />
             </button>

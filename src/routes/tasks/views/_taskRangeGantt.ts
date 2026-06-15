@@ -42,6 +42,11 @@ export interface GanttRow {
   segments: GanttSegment[];
 }
 
+export interface GanttSchedulePreview {
+  taskId: string;
+  scheduledDates: string[];
+}
+
 function iso(d: Date): string {
   return format(d, "yyyy-MM-dd");
 }
@@ -236,6 +241,20 @@ export function buildGanttRows(tasks: Task[], range: TaskTimeRange): GanttRow[] 
         : visibleRuns(task, range);
     return { task, segments };
   });
+}
+
+export function applyGanttSchedulePreview(
+  tasks: Task[],
+  preview: GanttSchedulePreview | null
+): Task[] {
+  if (!preview) return tasks;
+  let matched = false;
+  const next = tasks.map((task) => {
+    if (task.id !== preview.taskId) return task;
+    matched = true;
+    return { ...task, scheduledDates: preview.scheduledDates };
+  });
+  return matched ? next : tasks;
 }
 
 export function shiftContinuousSchedule(

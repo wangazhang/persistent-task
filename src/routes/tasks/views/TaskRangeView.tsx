@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { ChartGantt, Columns2, Rows3 } from "lucide-react";
 import {
@@ -17,11 +17,13 @@ import type { TaskSurfaceMode } from "../useTaskUrlState";
 import { taskSorter, useTagFilterSet } from "./_helpers";
 import { ViewFaceToggle } from "./_ViewFaceToggle";
 import {
+  applyGanttSchedulePreview,
   buildGanttRows,
   makeScrollableGanttRange,
   makeTaskTimeRange,
   resizeContinuousSchedule,
   shiftContinuousSchedule,
+  type GanttSchedulePreview,
   tasksIntersectingRange,
   type GanttSegment,
   type TaskRangeKind,
@@ -243,9 +245,14 @@ function RangeGantt({
 }) {
   const updateTask = useTaskStore((s) => s.updateTask);
   const timelineRange = useMemo(() => makeScrollableGanttRange(range), [range]);
+  const [dragPreview, setDragPreview] = useState<GanttSchedulePreview | null>(null);
+  const ganttTasks = useMemo(
+    () => applyGanttSchedulePreview(tasks, dragPreview),
+    [tasks, dragPreview]
+  );
   const rows = useMemo(
-    () => buildGanttRows(tasks, timelineRange),
-    [tasks, timelineRange]
+    () => buildGanttRows(ganttTasks, timelineRange),
+    [ganttTasks, timelineRange]
   );
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -304,23 +311,39 @@ function RangeGantt({
     event.stopPropagation();
     const startX = event.clientX;
     let moved = false;
+    let lastDelta = 0;
+
+    function nextDatesForDelta(delta: number): string[] {
+      return action === "move"
+        ? shiftContinuousSchedule(task.scheduledDates, delta)
+        : resizeContinuousSchedule(task.scheduledDates, action, delta);
+    }
 
     function onMove(moveEvent: MouseEvent) {
       if (Math.abs(moveEvent.clientX - startX) > 4) moved = true;
+      const delta = deltaFromPointer(startX, moveEvent.clientX);
+      if (delta === lastDelta) return;
+      lastDelta = delta;
+      setDragPreview(
+        delta === 0
+          ? null
+          : {
+              taskId: task.id,
+              scheduledDates: nextDatesForDelta(delta),
+            }
+      );
     }
     function onUp(upEvent: MouseEvent) {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       const delta = deltaFromPointer(startX, upEvent.clientX);
       if (!moved || delta === 0) {
+        setDragPreview(null);
         if (action === "move") onEdit(task);
         return;
       }
-      const next =
-        action === "move"
-          ? shiftContinuousSchedule(task.scheduledDates, delta)
-          : resizeContinuousSchedule(task.scheduledDates, action, delta);
-      updateTask(task.id, { scheduledDates: next });
+      updateTask(task.id, { scheduledDates: nextDatesForDelta(delta) });
+      setDragPreview(null);
     }
 
     window.addEventListener("mousemove", onMove);
