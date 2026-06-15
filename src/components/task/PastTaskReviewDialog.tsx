@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, PauseCircle, RotateCcw } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  PauseCircle,
+  RotateCcw,
+} from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Modal } from "@/components/ui/Modal";
 import { ReasonPromptDialog } from "./ReasonPromptDialog";
@@ -8,6 +14,9 @@ import { usePastReviewStore } from "@/store/pastReviewStore";
 import { isPastUnfinished } from "@/lib/pastReview";
 import { isoDate } from "@/lib/utils";
 import type { Task } from "@/lib/types";
+
+/** 分页每页条数 */
+const PAGE_SIZE = 8;
 
 /**
  * 过期未完成任务次日处理 —— 主对话框。
@@ -32,6 +41,16 @@ export function PastTaskReviewDialog() {
           a.scheduledDates[0].localeCompare(b.scheduledDates[0])
         ),
     [tasks, today]
+  );
+
+  // 分页（弹窗已加滚动兜底，这里按 PAGE_SIZE 翻页）
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+  // 渲染统一用 clampedPage：列表收缩 / 末页清空时页码自动回退，无需手动 reset。
+  const clampedPage = Math.min(page, pageCount);
+  const pageItems = list.slice(
+    (clampedPage - 1) * PAGE_SIZE,
+    clampedPage * PAGE_SIZE
   );
 
   // 二级对话框状态
@@ -82,8 +101,8 @@ export function PastTaskReviewDialog() {
           </button>
         }
       >
-        <ul className="divide-y divide-ink-200/70">
-          {list.map((t) => {
+        <ul className="max-h-[60vh] divide-y divide-ink-200/70 overflow-y-auto">
+          {pageItems.map((t) => {
             const date = format(parseISO(t.scheduledDates[0]), "M/d");
             return (
               <li
@@ -122,6 +141,32 @@ export function PastTaskReviewDialog() {
             );
           })}
         </ul>
+
+        {pageCount > 1 && (
+          <div className="mt-3 flex items-center justify-center gap-3 text-xs text-ink-500">
+            <button
+              type="button"
+              disabled={clampedPage <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="rounded p-1 hover:bg-ink-100 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="上一页"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span>
+              {clampedPage} / {pageCount}
+            </span>
+            <button
+              type="button"
+              disabled={clampedPage >= pageCount}
+              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              className="rounded p-1 hover:bg-ink-100 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="下一页"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </Modal>
 
       <ReasonPromptDialog
