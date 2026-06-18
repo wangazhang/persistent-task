@@ -723,12 +723,17 @@ pub fn clear_all(state: &AppState) -> Result<()> {
 }
 
 pub fn export_db(state: &AppState) -> Result<Vec<u8>> {
-    let _guard = state.conn.lock();
+    let guard = state.conn.lock();
+    // WAL 模式下最新写入可能仍滞留在 -wal 文件中，先 checkpoint 合并进主库，
+    // 否则只读主库文件会丢掉尚未合并的数据。
+    let _ = guard.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
     Ok(std::fs::read(&state.db_path)?)
 }
 
 pub fn export_db_to_path(state: &AppState, path: &str) -> Result<()> {
-    let _guard = state.conn.lock();
+    let guard = state.conn.lock();
+    // 同上：先把 WAL 合并进主库，再 fs::copy，确保备份包含全部最新数据。
+    let _ = guard.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
     std::fs::copy(&state.db_path, path).context("写出文件失败")?;
     Ok(())
 }
@@ -771,6 +776,18 @@ pub fn replace_db(state: &AppState, bytes: &[u8]) -> Result<()> {
         *guard = recovered;
         let _ = std::fs::remove_file(&tmp_path);
         return Err(anyhow::anyhow!("替换数据库文件失败：{}", e));
+    }
+
+    // 旧库残留的 -wal / -shm 属于被替换掉的数据库，若不清理，SQLite 重新打开时
+    // 会把旧 WAL 应用到新导入的库上，导致数据错乱 / 条数对不上。
+    if let Some(name) = state.db_path.file_name().map(|s| s.to_os_string()) {
+        for suffix in ["-wal", "-shm"] {
+            let mut sidecar = state.db_path.clone();
+            let mut n = name.clone();
+            n.push(suffix);
+            sidecar.set_file_name(n);
+            let _ = std::fs::remove_file(&sidecar);
+        }
     }
 
     let new_conn = Connection::open(&state.db_path).context("重新打开数据库失败")?;
