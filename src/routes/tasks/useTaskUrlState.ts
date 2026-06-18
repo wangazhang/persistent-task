@@ -33,7 +33,7 @@ export interface TaskUrlState {
   view: ViewMode;
   /** 周/月/年内部的正反面：时间格子 or 当前范围任务集合；today 忽略 */
   mode: TaskSurfaceMode;
-  /** 当前选中日（yyyy-MM-dd）；today 视图忽略 */
+  /** 当前选中日（yyyy-MM-dd）；各视图（含 today 的前后翻日）共用 */
   date: string;
   /** 状态过滤（all 表示不过滤） */
   status: TaskStatus | "all";
@@ -111,7 +111,11 @@ export function useTaskUrlState(): TaskUrlState & {
             if (next.view === "today") params.delete("mode");
           }
           if (next.mode !== undefined) params.set("mode", next.mode);
-          if (next.date !== undefined) params.set("date", next.date);
+          // date：等于今天时清掉，保持默认态 URL 干净（回到今天 = 无 ?date=）
+          if (next.date !== undefined) {
+            if (next.date === isoDate()) params.delete("date");
+            else params.set("date", next.date);
+          }
           // status：default "all" 时清掉，缩短 URL
           if (next.status !== undefined) {
             if (next.status === "all") params.delete("status");

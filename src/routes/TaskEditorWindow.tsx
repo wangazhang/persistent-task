@@ -39,7 +39,7 @@ export default function TaskEditorWindow() {
   useEffect(() => {
     // target 切换(用户在同一个 task-editor 窗口里打开了另一条任务)→ 清掉旧的 createdId
     createdIdRef.current = null;
-  }, [target.taskId, target.defaultDate]);
+  }, [target.taskId, target.defaultDate, target.defaultTitle]);
 
   useEffect(() => {
     let un: (() => void) | undefined;
@@ -202,6 +202,7 @@ export default function TaskEditorWindow() {
             task={task}
             tags={state.tags}
             defaultDate={target.defaultDate}
+            defaultTitle={target.defaultTitle}
             onSave={save}
             flushRef={flushRef}
           />

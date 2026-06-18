@@ -14,6 +14,7 @@ interface TaskEditorProps {
   open: boolean;
   task?: Task | null;
   defaultDate?: string;
+  defaultTitle?: string;
   onClose: () => void;
 }
 
@@ -21,6 +22,7 @@ export function TaskEditor({
   open,
   task,
   defaultDate,
+  defaultTitle,
   onClose,
 }: TaskEditorProps) {
   const tags = useTagStore((s) => s.tags);
@@ -55,6 +57,7 @@ export function TaskEditor({
         task={task}
         tags={tags}
         defaultDate={defaultDate}
+        defaultTitle={defaultTitle}
         onSave={save}
       />
     </Modal>

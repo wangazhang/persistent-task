@@ -17,6 +17,8 @@ const EV_ACTION = "task-editor:action";
 export interface TaskEditorTarget {
   taskId?: string;
   defaultDate?: string;
+  /** 新建模式下预填的任务标题（来自快速输入框，点「详细…」时带过来） */
+  defaultTitle?: string;
 }
 
 export interface TaskEditorDraft {
@@ -45,6 +47,7 @@ export function toTaskEditorUrl(target: TaskEditorTarget): string {
   const params = new URLSearchParams({ win: "task-editor" });
   if (target.taskId) params.set("taskId", target.taskId);
   if (target.defaultDate) params.set("defaultDate", target.defaultDate);
+  if (target.defaultTitle) params.set("defaultTitle", target.defaultTitle);
   return `index.html?${params.toString()}`;
 }
 
@@ -52,7 +55,12 @@ export function parseTaskEditorTarget(search: string): TaskEditorTarget {
   const params = new URLSearchParams(search.startsWith("?") ? search : `?${search}`);
   const taskId = params.get("taskId") || undefined;
   const defaultDate = params.get("defaultDate") || undefined;
-  return { ...(taskId ? { taskId } : {}), ...(defaultDate ? { defaultDate } : {}) };
+  const defaultTitle = params.get("defaultTitle") || undefined;
+  return {
+    ...(taskId ? { taskId } : {}),
+    ...(defaultDate ? { defaultDate } : {}),
+    ...(defaultTitle ? { defaultTitle } : {}),
+  };
 }
 
 export function taskEditorDraftToTaskPatch(draft: TaskEditorDraft): Partial<Task> {
@@ -81,6 +89,7 @@ export async function openTaskEditorWindow(target: TaskEditorTarget): Promise<vo
   await invoke("open_task_editor", {
     taskId: target.taskId ?? null,
     defaultDate: target.defaultDate ?? null,
+    defaultTitle: target.defaultTitle ?? null,
   });
 }
 
