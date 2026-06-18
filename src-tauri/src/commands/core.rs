@@ -722,20 +722,51 @@ pub fn clear_all(state: &AppState) -> Result<()> {
     Ok(())
 }
 
-pub fn export_db(state: &AppState) -> Result<Vec<u8>> {
+/// 把当前库完整导出到指定路径（独立、已整合的 .sqlite 文件）。
+///
+/// 为什么不是「checkpoint + fs::copy 主库文件」：
+///   本应用同一个 DB 文件上有两个常驻 WAL 连接（GUI 的 AppState 与 MCP 的
+///   mcp_state，见 lib.rs）。WAL 模式下只要另一个连接持有读锁，
+///   `wal_checkpoint(TRUNCATE)` 就会返回 SQLITE_BUSY 且**不**把 -wal 合并进主库；
+///   再 fs::copy 主库文件就会丢掉仍滞留在 -wal 里的最新写入 —— 表现为
+///   「导出后再导入，最近的记录全没了」。
+///
+///   `VACUUM INTO` 透过连接自身的视图读取（天然包含已提交的 WAL 帧，也包含
+///   另一连接提交的数据），写出一个干净、整合完毕的独立库文件，与 checkpoint
+///   成败、是否有并发连接都无关。
+fn vacuum_into(state: &AppState, dest: &std::path::Path) -> Result<()> {
+    // VACUUM INTO 要求目标文件不存在，否则报错。覆盖导出时先删旧文件。
+    if dest.exists() {
+        std::fs::remove_file(dest)
+            .with_context(|| format!("无法覆盖已存在的目标文件 {:?}", dest))?;
+    }
     let guard = state.conn.lock();
-    // WAL 模式下最新写入可能仍滞留在 -wal 文件中，先 checkpoint 合并进主库，
-    // 否则只读主库文件会丢掉尚未合并的数据。
-    let _ = guard.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
-    Ok(std::fs::read(&state.db_path)?)
+    // 路径里可能含单引号，转义后再拼进 SQL 字面量。
+    let dest_str = dest.to_string_lossy().replace('\'', "''");
+    guard
+        .execute_batch(&format!("VACUUM INTO '{}';", dest_str))
+        .context("导出数据库失败")?;
+    Ok(())
+}
+
+pub fn export_db(state: &AppState) -> Result<Vec<u8>> {
+    // VACUUM INTO 到临时文件，读出字节后删除。不直接读主库文件，原因见 vacuum_into。
+    let mut tmp = state.db_path.clone();
+    let mut name = tmp
+        .file_name()
+        .map(|s| s.to_os_string())
+        .unwrap_or_else(|| "db".into());
+    name.push(".export.tmp");
+    tmp.set_file_name(&name);
+
+    vacuum_into(state, &tmp)?;
+    let result = std::fs::read(&tmp).context("读取导出文件失败");
+    let _ = std::fs::remove_file(&tmp);
+    Ok(result?)
 }
 
 pub fn export_db_to_path(state: &AppState, path: &str) -> Result<()> {
-    let guard = state.conn.lock();
-    // 同上：先把 WAL 合并进主库，再 fs::copy，确保备份包含全部最新数据。
-    let _ = guard.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
-    std::fs::copy(&state.db_path, path).context("写出文件失败")?;
-    Ok(())
+    vacuum_into(state, std::path::Path::new(path))
 }
 
 pub fn replace_db(state: &AppState, bytes: &[u8]) -> Result<()> {
