@@ -11,6 +11,7 @@ import {
 import { getAdapter } from "@/lib/dataAdapter";
 import { confirm as dialogConfirm } from "@/store/dialogStore";
 import { cn } from "@/lib/utils";
+import { flushPersistQueue } from "@/persistenceQueue";
 import logoUrl from "@/assets/logo.png";
 
 const NAV_ITEMS = [
@@ -33,6 +34,7 @@ async function clearAllData() {
   });
   if (!ok) return;
   try {
+    await flushPersistQueue();
     await getAdapter().clearAll();
   } catch (e) {
     console.error("[clearAll] failed:", e);

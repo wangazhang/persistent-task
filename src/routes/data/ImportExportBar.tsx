@@ -4,12 +4,14 @@ import { exportDbToFile, importDbFromFile } from "@/lib/dbBackup";
 import { useTaskStore } from "@/store/taskStore";
 import { useTagStore } from "@/store/tagStore";
 import { track } from "@/lib/analytics";
+import { flushPersistQueue } from "@/persistenceQueue";
 
 export function ImportExportBar() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   async function handleExport() {
     track("ui.export", { kind: "db" });
+    await flushPersistQueue();
     await exportDbToFile();
   }
 
@@ -28,6 +30,7 @@ export function ImportExportBar() {
       tags: useTagStore.getState().tags.length,
       pomodoros: useTaskStore.getState().pomodoros.length,
     };
+    await flushPersistQueue();
     await importDbFromFile(file, counts);
   }
 

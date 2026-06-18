@@ -3,6 +3,7 @@ import { getAdapter } from "@/lib/dataAdapter";
 import type { Tag, TagNode } from "@/lib/types";
 import { uid } from "@/lib/utils";
 import { withTracking, type ActionMapping } from "@/lib/analytics/middleware";
+import { enqueuePersist } from "@/persistenceQueue";
 
 interface TagStoreState {
   tags: Tag[];
@@ -60,10 +61,10 @@ const tagTrackingMapping: ActionMapping<TagStoreState> = {
 };
 
 function persistTag(t: Tag) {
-  void getAdapter().upsertTag(t);
+  void enqueuePersist(() => getAdapter().upsertTag(t));
 }
 function persistDelete(id: string) {
-  void getAdapter().deleteTag(id);
+  void enqueuePersist(() => getAdapter().deleteTag(id));
 }
 
 export const useTagStore = create<TagStoreState>()(

@@ -11,6 +11,7 @@ import { isoDate, uid } from "@/lib/utils";
 import { withTracking, type ActionMapping } from "@/lib/analytics/middleware";
 import type { TaskPriority } from "@/lib/types";
 import { fillContinueDates } from "@/lib/pastReview";
+import { enqueuePersist } from "@/persistenceQueue";
 
 interface TaskStoreState {
   tasks: Task[];
@@ -66,16 +67,16 @@ interface TaskStoreState {
  * 仅做 fire-and-forget，UI 仍以 zustand 内存状态为准（乐观更新）。
  */
 function persistTask(t: Task) {
-  void getAdapter().upsertTask(t);
+  void enqueuePersist(() => getAdapter().upsertTask(t));
 }
 function persistDeleteTask(id: string) {
-  void getAdapter().deleteTask(id);
+  void enqueuePersist(() => getAdapter().deleteTask(id));
 }
 function persistPomo(p: PomodoroSession) {
-  void getAdapter().insertPomodoro(p);
+  void enqueuePersist(() => getAdapter().insertPomodoro(p));
 }
 function persistDeletePomo(id: string) {
-  void getAdapter().deletePomodoro(id);
+  void enqueuePersist(() => getAdapter().deletePomodoro(id));
 }
 
 const taskTrackingMapping: ActionMapping<TaskStoreState> = {
