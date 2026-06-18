@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { format } from "date-fns";
+import { addDays, format, parseISO } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import {
   DndContext,
@@ -18,7 +18,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, Sparkles } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { TaskCard } from "@/components/task/TaskCard";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
@@ -68,15 +68,21 @@ function SortableTaskItem({
 }
 
 interface Props {
+  /** 当前选中日（yyyy-MM-dd），默认今天 */
+  date: string;
+  onDateChange: (d: string) => void;
   onEdit: (t: Task) => void;
-  onCreate: () => void;
+  /** 打开完整编辑器；可带上快速输入框里已敲的标题做预填 */
+  onCreate: (title?: string) => void;
   /** 从 URL 来的标签筛选；空数组 = 不过滤 */
   tags: string[];
 }
 
-export function TodayView({ onEdit, onCreate, tags }: Props) {
+export function TodayView({ date, onDateChange, onEdit, onCreate, tags }: Props) {
   const navigate = useNavigate();
-  const today = isoDate();
+  const selected = date;
+  const realToday = isoDate();
+  const isToday = selected === realToday;
   const tasks = useTaskStore((s) => s.tasks);
   const reorder = useTaskStore((s) => s.reorderForDate);
   const addTask = useTaskStore((s) => s.addTask);
@@ -88,31 +94,31 @@ export function TodayView({ onEdit, onCreate, tags }: Props) {
     return tasks
       .filter(
         (t) =>
-          t.scheduledDates.includes(today) &&
+          t.scheduledDates.includes(selected) &&
           t.status !== "done" &&
           t.status !== "suspended" &&
           passTag(t)
       )
       .sort(taskSorter);
-  }, [tasks, today, tagFilter]);
+  }, [tasks, selected, tagFilter]);
 
   const suspendedToday = useMemo(() => {
     return tasks
       .filter(
         (t) =>
           t.status === "suspended" &&
-          t.scheduledDates.includes(today) &&
+          t.scheduledDates.includes(selected) &&
           passTag(t)
       )
       .sort(taskSorter);
-  }, [tasks, today, tagFilter]);
+  }, [tasks, selected, tagFilter]);
 
   const completedToday = useMemo(() => {
     return tasks
       .filter(
         (t) =>
           t.status === "done" &&
-          t.scheduledDates.includes(today) &&
+          t.scheduledDates.includes(selected) &&
           passTag(t)
       )
       .sort((a, b) => {
@@ -120,7 +126,7 @@ export function TodayView({ onEdit, onCreate, tags }: Props) {
         const tb = b.completedAt ?? b.updatedAt;
         return new Date(tb).getTime() - new Date(ta).getTime();
       });
-  }, [tasks, today, tagFilter]);
+  }, [tasks, selected, tagFilter]);
 
   const [quickInput, setQuickInput] = useState("");
   const [quickPriority, setQuickPriority] = useState<TaskPriority>("p2");
@@ -141,13 +147,21 @@ export function TodayView({ onEdit, onCreate, tags }: Props) {
     const newIndex = ids.indexOf(over.id as string);
     if (oldIndex < 0 || newIndex < 0) return;
     const next = arrayMove(ids, oldIndex, newIndex);
-    reorder(today, next);
+    reorder(selected, next);
   }
 
   function handleQuickAdd() {
     const title = quickInput.trim();
     if (!title) return;
-    addTask({ title, scheduledDates: [today], priority: quickPriority });
+    addTask({ title, scheduledDates: [selected], priority: quickPriority });
+    setQuickInput("");
+  }
+
+  // 点「详细…」：把已敲的标题带进完整编辑器预填，并清空快速输入框，
+  // 避免标题既留在这里、又出现在编辑器里造成两份。
+  function handleOpenDetail() {
+    const title = quickInput.trim();
+    onCreate(title || undefined);
     setQuickInput("");
   }
 
@@ -162,27 +176,56 @@ export function TodayView({ onEdit, onCreate, tags }: Props) {
   return (
     <div className={cols === 2 ? "mx-auto max-w-5xl" : "mx-auto max-w-3xl"}>
       {/* 今日大日期 banner —— Today view 独有的"仪式感" */}
-      <header className="mb-6">
-        <div className="mb-1 text-xs uppercase tracking-wider text-ink-400">
-          {format(new Date(), "EEEE", { locale: zhCN })}
+      <header className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <div className="mb-1 text-xs uppercase tracking-wider text-ink-400">
+            {format(parseISO(selected), "EEEE", { locale: zhCN })}
+          </div>
+          <h2 className="text-2xl font-semibold text-ink-800">
+            {format(parseISO(selected), "yyyy 年 M 月 d 日")}
+          </h2>
+          <p className="mt-1 text-sm text-ink-500">
+            {isToday ? "今日有 " : "共 "}
+            <span className="font-medium text-brand-600">{todayTasks.length}</span>{" "}
+            项待办
+            {completedToday.length > 0 && (
+              <>
+                ，已完成{" "}
+                <span className="font-medium text-success-600">
+                  {completedToday.length}
+                </span>{" "}
+                项
+              </>
+            )}
+          </p>
         </div>
-        <h2 className="text-2xl font-semibold text-ink-800">
-          {format(new Date(), "yyyy 年 M 月 d 日")}
-        </h2>
-        <p className="mt-1 text-sm text-ink-500">
-          今日有{" "}
-          <span className="font-medium text-brand-600">{todayTasks.length}</span>{" "}
-          项待办
-          {completedToday.length > 0 && (
-            <>
-              ，已完成{" "}
-              <span className="font-medium text-success-600">
-                {completedToday.length}
-              </span>{" "}
-              项
-            </>
+        <div className="flex shrink-0 items-center gap-2">
+          {!isToday && (
+            <button
+              type="button"
+              className="btn-secondary mr-1 text-xs"
+              onClick={() => onDateChange(isoDate())}
+            >
+              回到今天
+            </button>
           )}
-        </p>
+          <button
+            type="button"
+            className="rounded-lg border border-ink-200 p-1.5 text-ink-500 hover:bg-ink-50"
+            onClick={() => onDateChange(isoDate(addDays(parseISO(selected), -1)))}
+            aria-label="前一天"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-ink-200 p-1.5 text-ink-500 hover:bg-ink-50"
+            onClick={() => onDateChange(isoDate(addDays(parseISO(selected), 1)))}
+            aria-label="后一天"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
       </header>
 
       {/* 快速新建 */}
@@ -190,7 +233,11 @@ export function TodayView({ onEdit, onCreate, tags }: Props) {
         <Plus className="h-4 w-4 text-ink-400" />
         <input
           className="flex-1 border-none bg-transparent text-sm outline-none placeholder:text-ink-400"
-          placeholder="快速新建今日任务，回车保存"
+          placeholder={
+            isToday
+              ? "快速新建今日任务，回车保存"
+              : `快速新建 ${format(parseISO(selected), "M 月 d 日")} 的任务，回车保存`
+          }
           value={quickInput}
           onChange={(e) => setQuickInput(e.target.value)}
           onKeyDown={(e) => {
@@ -198,7 +245,7 @@ export function TodayView({ onEdit, onCreate, tags }: Props) {
           }}
         />
         <PriorityPicker priority={quickPriority} onChange={setQuickPriority} />
-        <button className="btn-ghost text-xs" onClick={onCreate}>
+        <button className="btn-ghost text-xs" onClick={handleOpenDetail}>
           详细…
         </button>
         <ListColumnsToggle />
@@ -207,7 +254,9 @@ export function TodayView({ onEdit, onCreate, tags }: Props) {
       {todayTasks.length === 0 ? (
         <div className="card flex flex-col items-center justify-center px-6 py-12 text-center">
           <Sparkles className="mb-2 h-6 w-6 text-brand-400" />
-          <p className="text-sm text-ink-500">今日无待办，享受片刻宁静吧</p>
+          <p className="text-sm text-ink-500">
+            {isToday ? "今日无待办，享受片刻宁静吧" : "这一天没有待办"}
+          </p>
         </div>
       ) : (
         <DndContext
@@ -250,7 +299,7 @@ export function TodayView({ onEdit, onCreate, tags }: Props) {
       </CollapsibleSection>
 
       <CollapsibleSection
-        title="今日已完成"
+        title={isToday ? "今日已完成" : "已完成"}
         count={completedToday.length}
         tone="success"
         defaultOpen

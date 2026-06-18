@@ -15,9 +15,9 @@ import type {
   Task,
   TaskDoc,
   TaskPriority,
-  TaskReviewEntry,
   TaskStatus,
 } from "../types";
+import { parseReviewLog, serializeReviewLog } from "../reviewLog";
 import type {
   AnalyticsEvent,
   EventCountRow,
@@ -53,16 +53,6 @@ function rowToTag(r: Row): Tag {
     color: s(r.color),
     order: n(r.order),
   };
-}
-
-function parseReviewLog(v: unknown): TaskReviewEntry[] | undefined {
-  if (v == null) return undefined;
-  try {
-    const parsed = JSON.parse(String(v));
-    return Array.isArray(parsed) ? (parsed as TaskReviewEntry[]) : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function rowToPomodoro(r: Row): PomodoroSession {
@@ -203,9 +193,7 @@ export class SqliteAdapter implements DataAdapter {
           task.completedAt ?? null,
           task.createdAt,
           task.updatedAt,
-          task.reviewLog && task.reviewLog.length > 0
-            ? JSON.stringify(task.reviewLog)
-            : null,
+          serializeReviewLog(task.reviewLog) ?? null,
         ]
       );
 

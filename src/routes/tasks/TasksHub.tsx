@@ -44,21 +44,26 @@ export function TasksHub() {
   const [editorDefaultDate, setEditorDefaultDate] = useState<string | undefined>(
     undefined
   );
+  const [editorDefaultTitle, setEditorDefaultTitle] = useState<string | undefined>(
+    undefined
+  );
   const [searchOpen, setSearchOpen] = useState(false);
 
-  function openCreate(defaultDate?: string) {
+  function openCreate(defaultDate?: string, defaultTitle?: string) {
     if (!isTauri()) {
       setEditing(null);
       setEditorDefaultDate(defaultDate);
+      setEditorDefaultTitle(defaultTitle);
       setEditorOpen(true);
       return;
     }
-    void openTaskEditorWindow({ defaultDate });
+    void openTaskEditorWindow({ defaultDate, defaultTitle });
   }
   function openEdit(t: Task) {
     if (!isTauri()) {
       setEditing(t);
       setEditorDefaultDate(undefined);
+      setEditorDefaultTitle(undefined);
       setEditorOpen(true);
       return;
     }
@@ -185,7 +190,13 @@ export function TasksHub() {
       )}
 
       {view === "today" && (
-        <TodayView tags={tags} onEdit={openEdit} onCreate={() => openCreate()} />
+        <TodayView
+          date={date}
+          tags={tags}
+          onDateChange={(d) => patch({ date: d })}
+          onEdit={openEdit}
+          onCreate={(title) => openCreate(date, title)}
+        />
       )}
       {view === "week" && (
         <WeekView
@@ -227,9 +238,11 @@ export function TasksHub() {
           open={editorOpen}
           task={editing}
           defaultDate={editorDefaultDate}
+          defaultTitle={editorDefaultTitle}
           onClose={() => {
             setEditorOpen(false);
             setEditorDefaultDate(undefined);
+            setEditorDefaultTitle(undefined);
           }}
         />
       )}

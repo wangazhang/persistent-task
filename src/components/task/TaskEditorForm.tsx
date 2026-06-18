@@ -64,6 +64,8 @@ interface TaskEditorFormProps {
   task?: Task | null;
   tags: Tag[];
   defaultDate?: string;
+  /** 新建模式下预填标题（编辑已有任务时忽略，以 task.title 为准） */
+  defaultTitle?: string;
   onSave: (draft: TaskEditorDraft) => void | Promise<void>;
   className?: string;
   bodyClassName?: string;
@@ -79,6 +81,7 @@ export function TaskEditorForm({
   task,
   tags,
   defaultDate,
+  defaultTitle,
   onSave,
   className,
   bodyClassName,
@@ -118,7 +121,7 @@ export function TaskEditorForm({
       setScheduledDates(task.scheduledDates);
       setColor(task.color);
     } else {
-      setTitle("");
+      setTitle(defaultTitle ?? "");
       setDescription("");
       setStatus("todo");
       setPriority("p2");
@@ -135,7 +138,7 @@ export function TaskEditorForm({
     setLastSavedAt(null);
     // 标记"刚刚加载",保证下一轮 auto-save effect 不会把刚 load 进来的快照再写回去
     justLoadedRef.current = true;
-  }, [task, defaultDate]);
+  }, [task, defaultDate, defaultTitle]);
 
   useEffect(() => {
     if (!titleEditing) return;

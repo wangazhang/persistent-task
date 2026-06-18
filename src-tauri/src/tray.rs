@@ -61,6 +61,7 @@ impl PopupMonitor {
 struct TaskEditorTarget {
     task_id: Option<String>,
     default_date: Option<String>,
+    default_title: Option<String>,
 }
 
 /// 创建托盘 + 注册事件 + 预先创建 hidden popup 窗口。
@@ -145,10 +146,12 @@ pub fn open_task_editor<R: Runtime>(
     app: AppHandle<R>,
     task_id: Option<String>,
     default_date: Option<String>,
+    default_title: Option<String>,
 ) -> Result<(), String> {
     let target = TaskEditorTarget {
         task_id,
         default_date,
+        default_title,
     };
 
     // 主窗口若处于最小化，先恢复（满足"详情依附主窗口"的视觉契约）
@@ -323,7 +326,27 @@ fn task_editor_url(target: &TaskEditorTarget) -> String {
     if let Some(default_date) = &target.default_date {
         parts.push(format!("defaultDate={}", default_date));
     }
+    // 标题是自由文本（可能含空格 / & / = / 中文），必须百分号编码，
+    // 否则会破坏 query 结构。前端 URLSearchParams 会自动解码回来。
+    if let Some(default_title) = &target.default_title {
+        parts.push(format!("defaultTitle={}", encode_query_component(default_title)));
+    }
     format!("index.html?{}", parts.join("&"))
+}
+
+/// 最小百分号编码：保留 RFC 3986 unreserved 字符，其余字节（含 UTF-8 多字节）
+/// 一律转成 %XX。够用就好，避免为此引入一个 url 编码 crate。
+fn encode_query_component(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for &byte in s.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
+            }
+            _ => out.push_str(&format!("%{:02X}", byte)),
+        }
+    }
+    out
 }
 
 fn handle_tray_event<R: Runtime>(app: &AppHandle<R>, event: &TrayIconEvent) {

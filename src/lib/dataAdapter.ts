@@ -17,6 +17,7 @@ import type {
   Tag,
   Task,
 } from "./types";
+import { parseReviewLog, serializeReviewLog } from "./reviewLog";
 import type {
   AnalyticsEvent,
   EventCountRow,
@@ -84,11 +85,19 @@ class TauriAdapter implements DataAdapter {
     return invoke<T>(cmd, args);
   }
 
-  listTasks() {
-    return this.invoke<Task[]>("list_tasks");
+  async listTasks() {
+    const tasks = await this.invoke<Task[]>("list_tasks");
+    // Rust 端 review_log 是 Option<String>（JSON 字符串），转回结构化数组
+    return tasks.map((t) => ({
+      ...t,
+      reviewLog: parseReviewLog((t as { reviewLog?: unknown }).reviewLog),
+    }));
   }
   upsertTask(task: Task) {
-    return this.invoke<void>("upsert_task", { task });
+    // Rust 端 review_log 期望 Option<String>，必须先把数组序列化成 JSON 字符串，
+    // 否则带 reviewLog 的 upsert 会反序列化失败并静默丢弃。
+    const payload = { ...task, reviewLog: serializeReviewLog(task.reviewLog) };
+    return this.invoke<void>("upsert_task", { task: payload });
   }
   deleteTask(id: string) {
     return this.invoke<void>("delete_task", { id });
